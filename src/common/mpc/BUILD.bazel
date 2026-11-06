@@ -1,0 +1,320 @@
+# Copyright 2026 Ant International, Ant Group. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Basic utilities
+# ============================================================================
+
+capricorn_cc_library(
+    name = "elementwise",
+    hdrs = ["elementwise.h"],
+)
+
+capricorn_cc_library(
+    name = "io_helper",
+    hdrs = ["io_helper.h"],
+    deps = [
+        "//src/common/runtime/link:link_io",
+    ],
+)
+
+# ============================================================================
+# Core cryptographic primitives
+# ============================================================================
+
+capricorn_cc_library(
+    name = "rot_context",
+    srcs = ["rot_context.cc"],
+    hdrs = ["rot_context.h"],
+    deps = [
+        "//src/common/runtime:macro",
+        "//src/common/runtime/link:link_io",
+        "@emp-ot",
+        "@emp-tool",
+        "@yacl//yacl/utils:thread_pool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "and_protocol",
+    srcs = ["and_protocol.cc"],
+    hdrs = ["and_protocol.h"],
+    deps = [
+        ":elementwise",
+        ":io_helper",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "mux",
+    srcs = ["mux.cc"],
+    hdrs = ["mux.h"],
+    deps = [
+        ":elementwise",
+        ":io_helper",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "b2a",
+    srcs = ["b2a.cc"],
+    hdrs = ["b2a.h"],
+    deps = [
+        ":mux",
+    ],
+)
+
+capricorn_cc_library(
+    name = "compare",
+    srcs = ["compare.cc"],
+    hdrs = ["compare.h"],
+    deps = [
+        ":and_protocol",
+        ":elementwise",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "truncate",
+    srcs = ["truncate.cc"],
+    hdrs = ["truncate.h"],
+    deps = [
+        ":b2a",
+        ":compare",
+        ":elementwise",
+        ":io_helper",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "ring_extension",
+    srcs = ["ring_extension.cc"],
+    hdrs = ["ring_extension.h"],
+    deps = [
+        ":elementwise",
+        ":io_helper",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "lookup_table",
+    srcs = ["lookup_table.cc"],
+    hdrs = ["lookup_table.h"],
+    deps = [
+        ":elementwise",
+        ":io_helper",
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+# ============================================================================
+# High-level protocols
+# ============================================================================
+
+capricorn_cc_library(
+    name = "bole_context",
+    srcs = ["bole_context.cc"],
+    hdrs = ["bole_context.h"],
+    deps = [
+        ":rot_context",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+        "@seal",
+    ],
+)
+
+capricorn_cc_library(
+    name = "preprocess",
+    srcs = ["preprocess.cc"],
+    hdrs = ["preprocess.h"],
+    deps = [
+        ":bole_context",
+        ":rot_context",
+        "//src/common/runtime:macro",
+        "//src/common/runtime/link:link_io",
+        "@emp-tool",
+    ],
+)
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+capricorn_cc_test_with_main(
+    name = "preprocess_test",
+    srcs = ["preprocess_test.cc"],
+    deps = [
+        ":preprocess",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "rot_context_test",
+    srcs = ["rot_context_test.cc"],
+    deps = [
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "bole_context_test",
+    srcs = ["bole_context_test.cc"],
+    deps = [
+        ":bole_context",
+        ":rot_context",
+        ":elementwise",
+        "//src/common/runtime/link:mock_link_io",
+        "@yacl//yacl/link",
+    ],
+)
+
+# ============================================================================
+# Additional unit tests for operator modules
+# ============================================================================
+
+capricorn_cc_test_with_main(
+    name = "and_protocol_test",
+    srcs = ["and_protocol_test.cc"],
+    deps = [
+        ":and_protocol",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "mux_test",
+    srcs = ["mux_test.cc"],
+    deps = [
+        ":mux",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "b2a_test",
+    srcs = ["b2a_test.cc"],
+    deps = [
+        ":b2a",
+        ":mux",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+_COMPARE_TEST_CASES = {
+    "compare_msb_test": "CompareTest.MSBTest",
+    "compare_public_value_test": "CompareTest.CompareWithPublicValueTest",
+    "compare_sub_block_test": "CompareTest.SubBlockCompareTest",
+    "compare_unsigned_test": "CompareTest.UnsignedCompareTest",
+    "compare_wrap_test": "CompareTest.WrapTest",
+}
+
+[
+    capricorn_cc_test_with_main(
+        name = target_name,
+        srcs = ["compare_test.cc"],
+        args = ["--gtest_filter={}".format(test_filter)],
+        deps = [
+            ":and_protocol",
+            ":compare",
+            ":rot_context",
+            "//src/common/runtime/link:mock_link_io",
+            "@emp-tool",
+            "@yacl//yacl/link",
+        ],
+    )
+    for target_name, test_filter in _COMPARE_TEST_CASES.items()
+]
+
+test_suite(
+    name = "compare_test",
+    tests = [":" + target_name for target_name in _COMPARE_TEST_CASES.keys()],
+)
+
+capricorn_cc_test_with_main(
+    name = "truncate_test",
+    srcs = ["truncate_test.cc"],
+    deps = [
+        ":and_protocol",
+        ":b2a",
+        ":compare",
+        ":mux",
+        ":rot_context",
+        ":truncate",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "ring_extension_test",
+    srcs = ["ring_extension_test.cc"],
+    deps = [
+        ":ring_extension",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "lookup_table_test",
+    srcs = ["lookup_table_test.cc"],
+    deps = [
+        ":lookup_table",
+        ":preprocess",
+        ":rot_context",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)

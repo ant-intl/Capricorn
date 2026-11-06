@@ -1,0 +1,55 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "customized_sort",
+    srcs = ["customized_sort.cc"],
+    hdrs = ["customized_sort.h"],
+    deps = [
+        "//src/common/runtime:macro",
+        "@spulib//libspu/core:config",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:half",
+        "@spulib//libspu/core:prelude",
+        "@spulib//libspu/core:type",
+        "@spulib//libspu/core:type_util",
+        "@spulib//libspu/device:io",
+        "@spulib//libspu/device:symbol_table",
+        "@spulib//libspu/kernel/hal:constants",
+        "@spulib//libspu/kernel/hal:polymorphic",
+        "@spulib//libspu/kernel/hal:prot_wrapper",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:shape_ops",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@spulib//libspu/kernel/hlo:basic_binary",
+        "@spulib//libspu/kernel/hlo:basic_unary",
+        "@spulib//libspu/kernel/hlo:casting",
+        "@spulib//libspu/kernel/hlo:const",
+        "@spulib//libspu/kernel/hlo:geometrical",
+        "@spulib//libspu/kernel/hlo:indexing",
+        "@spulib//libspu/kernel/hlo:rank",
+        "@spulib//libspu/kernel/hlo:reduce",
+        "@spulib//libspu/kernel/hlo:shuffle",
+        "@spulib//libspu/mpc:ab_api",
+        "@spulib//libspu/mpc:api",
+        "@spulib//libspu/mpc:factory",
+        "@yacl//yacl/base:buffer",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/rand",
+        "@yacl//yacl/crypto/tools:crhash",
+        "@yacl//yacl/crypto/tools:rp",
+        "@yacl//yacl/utils:serializer",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "customized_sort_test",
+    srcs = ["customized_sort_test.cc"],
+    deps = [
+        ":customized_sort",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@yacl//yacl/crypto/rand",
+    ],
+)

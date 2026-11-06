@@ -1,0 +1,111 @@
+# Copyright 2026 Ant International, Ant Group. All rights reserved.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+common --experimental_repo_remote_exec
+common --experimental_cc_shared_library
+
+common --registry=https://raw.githubusercontent.com/secretflow/bazel-registry/main
+common --registry=https://bcr.bazel.build
+common --registry=https://baidu.github.io/babylon/registry
+
+# Enable Bzlmod for every Bazel command
+common --enable_bzlmod
+
+# Required by OpenXLA
+build --nocheck_visibility
+
+build --incompatible_new_actions_api=false
+build --copt=-fdiagnostics-color=always
+build --copt=-Wno-ignored-attributes
+build --copt -march=native
+build --enable_platform_specific_config
+# emp-ot / emp-tool
+build --copt -DTHREADING
+
+build --cxxopt=-std=c++17
+build --cxxopt=-g
+build --host_cxxopt=-std=c++17
+build --linkopt -lm
+# 限制
+# build --jobs=32
+# build --local_resources=cpu=32
+
+# build --local_resources=memory=32768
+
+build:avx --copt=-mavx
+build:avx --host_copt=-mavx
+build:avx --copt=-DCHECK_AVX
+build:avx --host_copt=-DCHECK_AVX
+
+
+# Binary safety flags
+build --copt=-fPIC
+build --copt=-fstack-protector-strong
+build:linux --copt=-Wl,-z,noexecstack
+build:macos --copt=-Wa,--noexecstack
+
+# SPU unsafe api features
+build --copt=-DSPU_BUILD
+
+build --keep_going
+# build --strategy=Genrule=standalone
+
+test --test_output=errors
+
+build:benchmark --copt -O3
+build:benchmark --copt -march=native
+
+# static link runtime libraries on Linux
+build:linux --action_env=BAZEL_LINKOPTS=-static-libstdc++:-static-libgcc
+build:linux --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a:-l%:libgcc.a
+
+# platform specific config
+# Bazel will automatic pick platform config since we have enable_platform_specific_config set
+build:macos --copt=-Wno-unused-command-line-argument
+build:macos --features=-supports_dynamic_linker
+build:macos --macos_minimum_os=13.0
+build:macos --host_macos_minimum_os=13.0
+build:macos --action_env MACOSX_DEPLOYMENT_TARGET=13.0
+build:macos --copt=-Wno-deprecated-declarations 
+build:macos --copt=-Wno-vla-extension
+
+build:linux --copt=-fopenmp
+build:linux --linkopt=-fopenmp
+build:linux --copt=-Wno-stringop-overflow
+
+# NOTE: fix build on linux_aarch64, since `build:linux_aarch64` works only if `--config linux_aarch64` option included.
+build:linux --cxxopt=-Wno-mismatched-new-delete
+
+# for memory leak check
+build:asan --strip=never
+build:asan --copt -fno-sanitize-recover=all
+build:asan --copt -fsanitize=address
+build:asan --copt -Og
+build:asan --copt -g
+build:asan --copt -fno-omit-frame-pointer
+build:asan --linkopt -fsanitize=address
+build:asan --define disable_tcmalloc=true
+build:asan --copt="-Wno-error=uninitialized"
+build:asan --copt="-Wno-error=maybe-uninitialized"
+
+
+build:macos --@rules_cuda//cuda:enable=false
+build:linux --@rules_cuda//cuda:enable=false
+
+# macOS sandbox fixes for ARM64
+build:macos --sandbox_default_allow_network=false
+build:macos --experimental_sandbox_async_tree_delete_idle_threads=0
+
+# Use system preinstalled make instead of building from source (avoids sandbox issues)
+build --extra_toolchains=//bazel:preinstalled_make_toolchain

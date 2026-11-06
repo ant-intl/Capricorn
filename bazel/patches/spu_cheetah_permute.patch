@@ -1,0 +1,591 @@
+diff --git a/libspu/mpc/cheetah/BUILD.bazel b/libspu/mpc/cheetah/BUILD.bazel
+index 1132aaf..d9a4068 100644
+--- a/libspu/mpc/cheetah/BUILD.bazel
++++ b/libspu/mpc/cheetah/BUILD.bazel
+@@ -93,6 +93,24 @@ spu_cc_library(
+     ],
+ )
+
++spu_cc_library(
++    name = "permute",
++    srcs = ["permute.cc"],
++    hdrs = ["permute.h"],
++    copts = AES_COPT_FLAGS,
++    deps = [
++        ":state",
++        ":type",
++        "//libspu/core:ndarray_ref",
++        "//libspu/core:parallel_utils",
++        "//libspu/mpc:kernel",
++        "//libspu/mpc/common:communicator",
++        "//libspu/mpc/common:prg_state",
++        "//libspu/mpc/utils:ring_ops",
++        "@abseil-cpp//absl/types:span",
++    ],
++)
++
+ spu_cc_library(
+     name = "protocol",
+     srcs = ["protocol.cc"],
+@@ -102,6 +120,7 @@ spu_cc_library(
+         ":arithmetic",
+         ":boolean",
+         ":conversion",
++        ":permute",
+         ":state",
+         "//libspu/mpc/common:prg_state",
+         "//libspu/mpc/common:pv2k",
+diff --git a/libspu/mpc/cheetah/permute.cc b/libspu/mpc/cheetah/permute.cc
+new file mode 100644
+index 0000000..6ff32e0
+--- /dev/null
++++ b/libspu/mpc/cheetah/permute.cc
+@@ -0,0 +1,448 @@
++// Copyright 2026 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++
++#include "libspu/mpc/cheetah/permute.h"
++
++#include <algorithm>
++#include <cstdint>
++#include <limits>
++#include <numeric>
++#include <stack>
++#include <utility>
++#include <vector>
++
++#include "absl/types/span.h"
++
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/parallel_utils.h"
++#include "libspu/mpc/cheetah/state.h"
++#include "libspu/mpc/cheetah/type.h"
++#include "libspu/mpc/common/communicator.h"
++#include "libspu/mpc/common/prg_state.h"
++#include "libspu/mpc/utils/ring_ops.h"
++
++namespace spu::mpc::cheetah {
++namespace {
++
++int64_t NextPowerOfTwo(int64_t value) {
++  SPU_ENFORCE(value > 0);
++  int64_t result = 1;
++  while (result < value) {
++    SPU_ENFORCE(result <= std::numeric_limits<int64_t>::max() / 2,
++                "permutation is too large");
++    result *= 2;
++  }
++  return result;
++}
++
++int64_t ExactLog2(int64_t value) {
++  SPU_ENFORCE(value > 0 && (value & (value - 1)) == 0);
++  int64_t result = 0;
++  while (value > 1) {
++    value >>= 1;
++    ++result;
++  }
++  return result;
++}
++
++// The routing construction follows the Apache-2.0 MPC4J JDK Beneš network
++// implementation. It programs a fixed public network topology with private
++// switch bits for an output-to-input permutation map.
++class BenesProgram {
++ public:
++  explicit BenesProgram(const std::vector<int64_t>& destination)
++      : size_(static_cast<int64_t>(destination.size())),
++        log_size_(ExactLog2(size_)),
++        levels_(2 * log_size_ - 1),
++        gates_(levels_, std::vector<uint8_t>(size_ / 2, 0)),
++        fixed_sources_(levels_, std::vector<int64_t>(size_, -1)),
++        switch_indexes_(levels_, std::vector<int64_t>(size_, -1)) {
++    SPU_ENFORCE(size_ >= 2);
++    ValidatePermutation(destination);
++    GenerateRoute(log_size_, 0, 0, destination);
++
++    std::vector<int64_t> source(size_);
++    std::iota(source.begin(), source.end(), 0);
++    ProgramTopology(log_size_, 0, 0, 0, source);
++    const int64_t half_levels = (levels_ + 1) / 2;
++    for (int64_t level = half_levels; level < levels_; ++level) {
++      switch_indexes_[level] = switch_indexes_[levels_ - 1 - level];
++    }
++    ValidateProgram();
++  }
++
++  int64_t levels() const { return levels_; }
++  int64_t switches_per_level() const { return size_ / 2; }
++  const std::vector<uint8_t>& gates(int64_t level) const {
++    return gates_[level];
++  }
++  const std::vector<int64_t>& fixed_sources(int64_t level) const {
++    return fixed_sources_[level];
++  }
++  const std::vector<int64_t>& switch_indexes(int64_t level) const {
++    return switch_indexes_[level];
++  }
++
++ private:
++  static void ValidatePermutation(const std::vector<int64_t>& permutation) {
++    std::vector<uint8_t> seen(permutation.size(), 0);
++    for (const int64_t value : permutation) {
++      SPU_ENFORCE(value >= 0 && value < static_cast<int64_t>(permutation.size()),
++                  "invalid permutation entry {}", value);
++      SPU_ENFORCE(seen[value] == 0, "duplicate permutation entry {}", value);
++      seen[value] = 1;
++    }
++  }
++
++  static void DepthFirstSearch(std::vector<int8_t>* path,
++                               const std::vector<int64_t>& permutation,
++                               const std::vector<int64_t>& inverse,
++                               int64_t start) {
++    std::stack<std::pair<int64_t, int8_t>> pending;
++    pending.emplace(start, 0);
++    while (!pending.empty()) {
++      const auto [index, route] = pending.top();
++      pending.pop();
++      (*path)[index] = route;
++
++      const int64_t neighbor = index ^ 1;
++      if ((*path)[neighbor] < 0) {
++        pending.emplace(neighbor, route ^ 1);
++      }
++
++      const int64_t next = permutation[inverse[index] ^ 1];
++      if ((*path)[next] < 0) {
++        pending.emplace(next, route ^ 1);
++      }
++    }
++  }
++
++  void GenerateRoute(int64_t sub_log_size, int64_t level,
++                     int64_t switch_offset,
++                     const std::vector<int64_t>& permutation) {
++    const int64_t sub_size = static_cast<int64_t>(permutation.size());
++    if (sub_size == 2) {
++      SPU_ENFORCE(sub_log_size == 1);
++      gates_[level][switch_offset] = permutation[0] == 0 ? 0 : 1;
++      return;
++    }
++
++    const int64_t sub_levels = 2 * sub_log_size - 1;
++    const int64_t half = sub_size / 2;
++    std::vector<int64_t> inverse(sub_size);
++    for (int64_t index = 0; index < sub_size; ++index) {
++      inverse[permutation[index]] = index;
++    }
++
++    std::vector<int8_t> path(sub_size, -1);
++    for (int64_t index = 0; index < sub_size; ++index) {
++      if (path[index] < 0) {
++        DepthFirstSearch(&path, permutation, inverse, index);
++      }
++    }
++
++    std::vector<int64_t> top_destination(half);
++    std::vector<int64_t> bottom_destination(half);
++    int64_t input_index = 0;
++    for (int64_t part = 0; part < half; ++part) {
++      gates_[level][switch_offset + part] = path[input_index];
++      const int8_t right_from_top = path[permutation[input_index]];
++      gates_[level + sub_levels - 1][switch_offset + part] =
++          right_from_top;
++      if (right_from_top == 0) {
++        top_destination[part] = permutation[input_index++] >> 1;
++        bottom_destination[part] = permutation[input_index++] >> 1;
++      } else {
++        bottom_destination[part] = permutation[input_index++] >> 1;
++        top_destination[part] = permutation[input_index++] >> 1;
++      }
++    }
++
++    GenerateRoute(sub_log_size - 1, level + 1, switch_offset,
++                  top_destination);
++    GenerateRoute(sub_log_size - 1, level + 1,
++                  switch_offset + sub_size / 4, bottom_destination);
++  }
++
++  void ProgramTopology(int64_t sub_log_size, int64_t level,
++                       int64_t switch_offset, int64_t target_offset,
++                       const std::vector<int64_t>& source_indexes) {
++    const int64_t sub_size = static_cast<int64_t>(source_indexes.size());
++    if (sub_size == 2) {
++      fixed_sources_[level][target_offset] = source_indexes[0];
++      fixed_sources_[level][target_offset + 1] = source_indexes[1];
++      switch_indexes_[level][target_offset] = switch_offset;
++      switch_indexes_[level][target_offset + 1] = switch_offset;
++      return;
++    }
++
++    std::copy(source_indexes.begin(), source_indexes.end(),
++              fixed_sources_[level].begin() + target_offset);
++    const int64_t half = sub_size / 2;
++    std::vector<int64_t> top_indexes(half);
++    std::vector<int64_t> bottom_indexes(half);
++    for (int64_t part = 0; part < half; ++part) {
++      const int64_t even = target_offset + 2 * part;
++      const int64_t odd = even + 1;
++      top_indexes[part] = even;
++      bottom_indexes[part] = odd;
++      switch_indexes_[level][even] = switch_offset + part;
++      switch_indexes_[level][odd] = switch_offset + part;
++    }
++
++    ProgramTopology(sub_log_size - 1, level + 1, switch_offset,
++                    target_offset, top_indexes);
++    ProgramTopology(sub_log_size - 1, level + 1,
++                    switch_offset + sub_size / 4, target_offset + half,
++                    bottom_indexes);
++
++    const int64_t right_level = level + 2 * sub_log_size - 2;
++    for (int64_t part = 0; part < half; ++part) {
++      fixed_sources_[right_level][target_offset + 2 * part] =
++          target_offset + part;
++      fixed_sources_[right_level][target_offset + 2 * part + 1] =
++          target_offset + half + part;
++    }
++  }
++
++  void ValidateProgram() const {
++    for (int64_t level = 0; level < levels_; ++level) {
++      std::vector<int64_t> counts(size_ / 2, 0);
++      for (int64_t wire = 0; wire < size_; ++wire) {
++        SPU_ENFORCE(fixed_sources_[level][wire] >= 0 &&
++                    fixed_sources_[level][wire] < size_);
++        const int64_t switch_index = switch_indexes_[level][wire];
++        SPU_ENFORCE(switch_index >= 0 && switch_index < size_ / 2);
++        ++counts[switch_index];
++      }
++      for (const int64_t count : counts) {
++        SPU_ENFORCE(count == 2);
++      }
++      for (const uint8_t gate : gates_[level]) {
++        SPU_ENFORCE(gate <= 1);
++      }
++    }
++  }
++
++  int64_t size_;
++  int64_t log_size_;
++  int64_t levels_;
++  std::vector<std::vector<uint8_t>> gates_;
++  std::vector<std::vector<int64_t>> fixed_sources_;
++  std::vector<std::vector<int64_t>> switch_indexes_;
++};
++
++std::vector<int64_t> ReadInversePermutation(const NdArrayRef& permutation,
++                                            int64_t row, int64_t width,
++                                            int64_t padded_width) {
++  SPU_ENFORCE(permutation.eltype().isa<PShrTy>());
++  std::vector<int64_t> inverse(padded_width);
++  std::vector<uint8_t> seen(width, 0);
++  NdArrayView<uint64_t> values(permutation);
++  for (int64_t input = 0; input < width; ++input) {
++    const uint64_t output = values[row * width + input];
++    SPU_ENFORCE(output < static_cast<uint64_t>(width),
++                "permutation entry {} is outside [0, {})", output, width);
++    SPU_ENFORCE(seen[output] == 0, "duplicate permutation entry {}", output);
++    seen[output] = 1;
++    inverse[output] = input;
++  }
++  for (int64_t index = width; index < padded_width; ++index) {
++    inverse[index] = index;
++  }
++  return inverse;
++}
++
++NdArrayRef PadRows(const NdArrayRef& input, int64_t rows, int64_t width,
++                   int64_t padded_width) {
++  const auto field = input.eltype().as<AShrTy>()->field();
++  auto padded = ring_zeros(field, {rows, padded_width}).as(input.eltype());
++  DISPATCH_ALL_FIELDS(field, [&]() {
++    NdArrayView<ring2k_t> source(input);
++    NdArrayView<ring2k_t> destination(padded);
++    pforeach(0, rows, [&](int64_t row) {
++      for (int64_t column = 0; column < width; ++column) {
++        destination[row * padded_width + column] =
++            source[row * width + column];
++      }
++    });
++  });
++  return padded;
++}
++
++NdArrayRef UnpadRows(const NdArrayRef& input, const Shape& output_shape,
++                     int64_t rows, int64_t width, int64_t padded_width) {
++  const auto field = input.eltype().as<AShrTy>()->field();
++  auto output = ring_zeros(field, output_shape).as(input.eltype());
++  DISPATCH_ALL_FIELDS(field, [&]() {
++    NdArrayView<ring2k_t> source(input);
++    NdArrayView<ring2k_t> destination(output);
++    pforeach(0, rows, [&](int64_t row) {
++      for (int64_t column = 0; column < width; ++column) {
++        destination[row * width + column] =
++            source[row * padded_width + column];
++      }
++    });
++  });
++  return output;
++}
++
++NdArrayRef ApplyOwnerNetwork(KernelEvalContext* ctx, const NdArrayRef& input,
++                             const NdArrayRef& permutation, int64_t owner,
++                             int64_t rows, int64_t width,
++                             int64_t padded_width) {
++  const auto field = input.eltype().as<AShrTy>()->field();
++  auto* communicator = ctx->getState<Communicator>();
++  const int64_t rank = static_cast<int64_t>(communicator->getRank());
++
++  if (padded_width == 1) {
++    return input;
++  }
++
++  auto* ot_state = ctx->getState<CheetahOTState>();
++  ot_state->LazyInit(communicator);
++  auto ot = ot_state->get();
++
++  std::vector<BenesProgram> programs;
++  programs.reserve(rows);
++  if (rank == owner) {
++    for (int64_t row = 0; row < rows; ++row) {
++      programs.emplace_back(ReadInversePermutation(
++          permutation, row, width, padded_width));
++    }
++  } else {
++    std::vector<int64_t> identity(padded_width);
++    std::iota(identity.begin(), identity.end(), 0);
++    for (int64_t row = 0; row < rows; ++row) {
++      programs.emplace_back(identity);
++    }
++  }
++
++  const int64_t levels = programs.front().levels();
++  const int64_t switches_per_row = programs.front().switches_per_level();
++  const int64_t switch_count = rows * switches_per_row;
++  NdArrayRef current(input);
++
++  for (int64_t level = 0; level < levels; ++level) {
++    auto routed = ring_zeros(field, {rows, padded_width}).as(input.eltype());
++    std::vector<int64_t> first_wire(switch_count, -1);
++    std::vector<int64_t> second_wire(switch_count, -1);
++    std::vector<uint8_t> choices(switch_count, 0);
++
++    DISPATCH_ALL_FIELDS(field, [&]() {
++      NdArrayView<ring2k_t> source(current);
++      NdArrayView<ring2k_t> destination(routed);
++      for (int64_t row = 0; row < rows; ++row) {
++        const auto& fixed = programs[row].fixed_sources(level);
++        const auto& switches = programs[row].switch_indexes(level);
++        for (int64_t wire = 0; wire < padded_width; ++wire) {
++          const int64_t flat_wire = row * padded_width + wire;
++          destination[flat_wire] =
++              source[row * padded_width + fixed[wire]];
++          const int64_t flat_switch =
++              row * switches_per_row + switches[wire];
++          if (first_wire[flat_switch] < 0) {
++            first_wire[flat_switch] = flat_wire;
++          } else {
++            second_wire[flat_switch] = flat_wire;
++          }
++        }
++        if (rank == owner) {
++          const auto& gates = programs[row].gates(level);
++          std::copy(gates.begin(), gates.end(),
++                    choices.begin() + row * switches_per_row);
++        }
++      }
++    });
++
++    auto differences =
++        ring_zeros(field, {switch_count}).as(input.eltype());
++    DISPATCH_ALL_FIELDS(field, [&]() {
++      NdArrayView<ring2k_t> values(routed);
++      NdArrayView<ring2k_t> differences_view(differences);
++      pforeach(0, switch_count, [&](int64_t index) {
++        SPU_ENFORCE(first_wire[index] >= 0 && second_wire[index] >= 0);
++        differences_view[index] = values[second_wire[index]] -
++                                  values[first_wire[index]];
++      });
++    });
++
++    NdArrayRef products =
++        rank == owner ? ot->PrivateMulxRecv(
++                            differences, absl::MakeConstSpan(choices))
++                      : ot->PrivateMulxSend(differences);
++    auto next = ring_zeros(field, {rows, padded_width}).as(input.eltype());
++    DISPATCH_ALL_FIELDS(field, [&]() {
++      NdArrayView<ring2k_t> routed_view(routed);
++      NdArrayView<ring2k_t> product_view(products);
++      NdArrayView<ring2k_t> next_view(next);
++      pforeach(0, switch_count, [&](int64_t index) {
++        const ring2k_t left = routed_view[first_wire[index]];
++        const ring2k_t right = routed_view[second_wire[index]];
++        const ring2k_t product = product_view[index];
++        next_view[first_wire[index]] = left + product;
++        next_view[second_wire[index]] = right - product;
++      });
++    });
++    current = std::move(next);
++  }
++  return current;
++}
++
++NdArrayRef ApplyJointPermutation(KernelEvalContext* ctx, const NdArrayRef& in,
++                                 const NdArrayRef& permutation, int64_t rows,
++                                 int64_t width) {
++  SPU_ENFORCE(in.eltype().isa<AShrTy>(), "input must be a Cheetah AShare");
++  SPU_ENFORCE(permutation.eltype().isa<PShrTy>(),
++              "permutation must be a Cheetah PShare");
++  SPU_ENFORCE(in.numel() == rows * width);
++  SPU_ENFORCE(permutation.numel() == rows * width);
++  auto* communicator = ctx->getState<Communicator>();
++  SPU_ENFORCE(communicator->getWorldSize() == 2,
++              "Cheetah private permutation requires two parties");
++
++  const int64_t padded_width = NextPowerOfTwo(width);
++  auto output = PadRows(in, rows, width, padded_width);
++  for (int64_t owner = 0; owner < 2; ++owner) {
++    output = ApplyOwnerNetwork(ctx, output, permutation, owner, rows, width,
++                               padded_width);
++  }
++  return UnpadRows(output, in.shape(), rows, width, padded_width);
++}
++
++NdArrayRef GeneratePermutations(KernelEvalContext* ctx, const Shape& shape,
++                                int64_t rows, int64_t width) {
++  auto output = NdArrayRef(makeType<PShrTy>(), shape);
++  auto* prg_state = ctx->getState<PrgState>();
++  NdArrayView<uint64_t> output_view(output);
++  for (int64_t row = 0; row < rows; ++row) {
++    const auto permutation = prg_state->genPrivPerm(width);
++    for (int64_t column = 0; column < width; ++column) {
++      output_view[row * width + column] =
++          static_cast<uint64_t>(permutation[column]);
++    }
++  }
++  return output;
++}
++
++}  // namespace
++
++NdArrayRef RandPermM::proc(KernelEvalContext* ctx, const Shape& shape) const {
++  SPU_ENFORCE(shape.numel() > 0);
++  SPU_ENFORCE(shape.ndim() == 1, "rand_perm_m expects a 1-D shape");
++  return GeneratePermutations(ctx, shape, 1, shape.numel());
++}
++
++NdArrayRef PermAM::proc(KernelEvalContext* ctx, const NdArrayRef& in,
++                        const NdArrayRef& permutation) const {
++  SPU_ENFORCE(in.shape().ndim() == 1, "perm_am expects a 1-D input");
++  SPU_ENFORCE(in.shape() == permutation.shape());
++  return ApplyJointPermutation(ctx, in, permutation, 1, in.numel());
++}
++
++}  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/permute.h b/libspu/mpc/cheetah/permute.h
+new file mode 100644
+index 0000000..b41ddb6
+--- /dev/null
++++ b/libspu/mpc/cheetah/permute.h
+@@ -0,0 +1,30 @@
++// Copyright 2026 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++
++#pragma once
++
++#include "libspu/mpc/kernel.h"
++
++namespace spu::mpc::cheetah {
++
++class RandPermM : public RandKernel {
++ public:
++  static constexpr const char* kBindName() { return "rand_perm_m"; }
++  Kind kind() const override { return Kind::Dynamic; }
++  NdArrayRef proc(KernelEvalContext* ctx, const Shape& shape) const override;
++};
++
++class PermAM : public PermKernel {
++ public:
++  static constexpr const char* kBindName() { return "perm_am"; }
++  Kind kind() const override { return Kind::Dynamic; }
++  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& in,
++                  const NdArrayRef& perm) const override;
++};
++
++}  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/protocol.cc b/libspu/mpc/cheetah/protocol.cc
+index 88e8022..524f2bf 100644
+--- a/libspu/mpc/cheetah/protocol.cc
++++ b/libspu/mpc/cheetah/protocol.cc
+@@ -23,6 +23,7 @@
+ #include "libspu/mpc/cheetah/arithmetic.h"
+ #include "libspu/mpc/cheetah/boolean.h"
+ #include "libspu/mpc/cheetah/conversion.h"
++#include "libspu/mpc/cheetah/permute.h"
+ #include "libspu/mpc/cheetah/state.h"
+ #include "libspu/mpc/cheetah/type.h"
+ #include "libspu/mpc/common/pv2k.h"
+@@ -79,7 +80,8 @@ void regCheetahProtocol(SPUContext* ctx,
+                   cheetah::CommonTypeB, cheetah::CommonTypeV,               //
+                   cheetah::CastTypeB, cheetah::AndBP, cheetah::AndBB,       //
+                   cheetah::XorBP, cheetah::XorBB,                           //
+-                  cheetah::RandA, cheetah::RandB>();
++                  cheetah::RandA, cheetah::RandB,                           //
++                  cheetah::RandPermM, cheetah::PermAM>();
+ }
+
+ std::unique_ptr<SPUContext> makeCheetahProtocol(
+diff --git a/libspu/mpc/cheetah/type.cc b/libspu/mpc/cheetah/type.cc
+index 1497189..232b11a 100644
+--- a/libspu/mpc/cheetah/type.cc
++++ b/libspu/mpc/cheetah/type.cc
+@@ -25,6 +25,6 @@ void registerTypes() {
+
+   static std::once_flag flag;
+   std::call_once(flag, []() {
+-    TypeContext::getTypeContext()->addTypes<AShrTy, BShrTy>();
++    TypeContext::getTypeContext()->addTypes<AShrTy, BShrTy, PShrTy>();
+   });
+ }
+diff --git a/libspu/mpc/cheetah/type.h b/libspu/mpc/cheetah/type.h
+index 607c207..ca10a14 100644
+--- a/libspu/mpc/cheetah/type.h
++++ b/libspu/mpc/cheetah/type.h
+@@ -62,4 +62,13 @@ class BShrTy : public TypeImpl<BShrTy, RingTy, Secret, BShare> {
+   }
+ };
+
++class PShrTy : public TypeImpl<PShrTy, RingTy, Secret, PShare> {
++  using Base = TypeImpl<PShrTy, RingTy, Secret, PShare>;
++
++ public:
++  using Base::Base;
++  static std::string_view getStaticId() { return "cheetah.PShr"; }
++  explicit PShrTy() { field_ = FieldType::FM64; }
++};
++
+ void registerTypes();
+diff --git a/libspu/kernel/hlo/shuffle.cc b/libspu/kernel/hlo/shuffle.cc
+--- a/libspu/kernel/hlo/shuffle.cc
++++ b/libspu/kernel/hlo/shuffle.cc
+@@ -48,7 +48,7 @@ std::vector<spu::Value> Shuffle(SPUContext* ctx,
+   if (ctx->hasKernel("rand_perm_m") && ctx->hasKernel("perm_am")) {
+     auto shuffle_fn = [&](absl::Span<const spu::Value> input) {
+       std::vector<spu::Value> rets;
+-      auto rand_perm = hal::_rand_perm_s(ctx, input_shape);
++      auto rand_perm = hal::_rand_perm_s(ctx, input[0].shape());
+       for (size_t i = 0; i < input.size(); ++i) {
+         rets.emplace_back(hal::_perm_ss(ctx, _2s(ctx, input[i]), rand_perm)
+                               .setDtype(input[i].dtype()));

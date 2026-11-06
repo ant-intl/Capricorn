@@ -1,0 +1,61 @@
+diff --git a/emp-ot/ferret/ferret_cot.h b/emp-ot/ferret/ferret_cot.h
+index 8fafddf..125c5a5 100644
+--- a/emp-ot/ferret/ferret_cot.h
++++ b/emp-ot/ferret/ferret_cot.h
+@@ -69,7 +69,8 @@ private:
+ 	MpcotReg<T> *mpcot = nullptr;
+ 	LpnF2<T, 10> *lpn_f2 = nullptr;
+ 
+-	
++	bool all_have_files = false;
++
+ 	void online_sender(block *data, int64_t length);
+ 
+ 	void online_recver(block *data, const bool *b, int64_t length);
+diff --git a/emp-ot/ferret/ferret_cot.hpp b/emp-ot/ferret/ferret_cot.hpp
+index fbd6170..ea9f242 100644
+--- a/emp-ot/ferret/ferret_cot.hpp
++++ b/emp-ot/ferret/ferret_cot.hpp
+@@ -28,8 +28,10 @@ FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
+ template<typename T>
+ FerretCOT<T>::~FerretCOT() {
+ 	if (ot_pre_data != nullptr) {
+-		// if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta, pre_ot_filename);
+-		// else write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)0, pre_ot_filename);
++		if (!all_have_files) {
++			if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta, pre_ot_filename);
++			else write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)0, pre_ot_filename);
++		}
+ 		delete[] ot_pre_data;
+ 	}
+ 	if (ot_data != nullptr) delete[] ot_data;
+@@ -100,9 +102,9 @@ void FerretCOT<T>::setup(std::string pre_file) {
+ 	});
+ 
+ 	ot_pre_data = new block[param.n_pre];
+-	//bool hasfile = file_exists(pre_ot_filename), hasfile2;
+-	bool hasfile = false; 
+-	bool hasfile2 = false;
++	bool hasfile = file_exists(pre_ot_filename), hasfile2;
++	// bool hasfile = false; 
++	// bool hasfile2 = false;
+ 	if(party == ALICE) {
+ 		io->send_data(&hasfile, sizeof(bool));
+ 		io->flush();
+@@ -114,6 +116,7 @@ void FerretCOT<T>::setup(std::string pre_file) {
+ 	}
+ 	if(hasfile & hasfile2) {
+ 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
++		all_have_files = true;
+ 	} else {
+ 		if(party == BOB) base_cot->cot_gen_pre();
+ 		else base_cot->cot_gen_pre(Delta);
+@@ -209,7 +212,7 @@ __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string
+ 	if(nin != param.n || tin != param.t || kin != param.k)
+ 		error("wrong parameters");
+ 	fio.recv_data(pre_loc, param.n_pre*16);
+-	std::remove(filename.c_str());
++	// std::remove(filename.c_str());
+ 	return delta;
+ }
+ 

@@ -1,0 +1,3823 @@
+diff --git a/.bazelrc b/.bazelrc
+index de0a5c66..f8caa347 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -44,11 +44,16 @@ build:gpu --@rules_cuda//cuda:enable=true
+ # Binary safety flags
+ build --copt=-fPIC
+ build --copt=-fstack-protector-strong
++build --copt=-DCMAKE_POLICY_VERSION_MINIMUM=3.5
+ build:linux --copt=-Wl,-z,noexecstack
+ build:macos --copt=-Wa,--noexecstack
+
+
+ build --keep_going
++
++# Limit concurrent jobs to avoid posix_spawn/fork failures on macOS
++build:macos --jobs=4
++build:linux --jobs=8
+ test --test_output=errors
+
+ build:benchmark --copt -O3
+@@ -69,3 +74,8 @@ build:macos --action_env MACOSX_DEPLOYMENT_TARGET=13.0
+
+ build:linux --copt=-fopenmp
+ build:linux --linkopt=-fopenmp
++
++# Use system preinstalled make/cmake/pkg-config instead of building from source (avoids sandbox issues)
++build --extra_toolchains=//bazel:preinstalled_make_toolchain
++build --extra_toolchains=//bazel:preinstalled_cmake_toolchain
++build --extra_toolchains=//bazel:preinstalled_pkgconfig_toolchain
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index e8f6c363..597bdee0 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -322,12 +322,12 @@
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/hash_drbg/0.0.0-20230516-2411fa9/source.json": "6b69146300eb6ae35f1364d9f558c6c0503e70b399523e7b8fa8a6e831304151",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/jsoncpp/1.9.5/MODULE.bazel": "not found",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/leveldb/1.23/MODULE.bazel": "450b5dafff03fd68d2c57544e0cdca1411e9cf42ae599e31fbbbfdf1ddea92b3",
+-    "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/leveldb/1.23/source.json": "69c27fb00af5f46b7fbb2cb8f813a5d81872bfef5bc45a055b25e44356bc8aa7",
++    "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/leveldb/1.23/source.json": "82a078a44ec4a6c299fe108e87b6d7a0ce56dd46206bfc69495001087d7e2dfb",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/lib25519/20240321/MODULE.bazel": "849ae135d5582105a552331791eb34bb881bc9cc14106c159c4bf70bed02808a",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/lib25519/20240321/source.json": "17672e2c227edd4b9a17fcc1d078fd94ae86ad1f0c78fc491880bf03565045ed",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libpfm/4.11.0/MODULE.bazel": "not found",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libsodium/1.0.18/MODULE.bazel": "0c5efe7944f6cf929c6b6414b539ceec47305cfc69856b1c7c9dc066016d50c5",
+-    "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libsodium/1.0.18/source.json": "95bb802f5e2c3b1588d9aed2613501eface5637197521d26409bf9fc83f9d725",
++    "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libsodium/1.0.18/source.json": "85abb5d41e1f38b3909f24a92eca547d337bee936649d39461037b0582ec6cd1",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libtommath/0.0.0-20240407-42b3fb0/MODULE.bazel": "09c54cc493f68ec486a6c36b4b494a67936532a075fec29089cc1b8e1143e30d",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/libtommath/0.0.0-20240407-42b3fb0/source.json": "ffeac1c889d6d8eb4c6ed0d7243bfd298a94f0fb3a3670a31e88045b8c95fc02",
+     "https://raw.githubusercontent.com/secretflow/bazel-registry/main/modules/llvm-raw/20240809.0-35f55f5/MODULE.bazel": "569ffa91a1497f0cbfc2a39b03b3155d2f7e7c360e2fdf5b31418868a1a9f1b8",
+@@ -445,8 +445,8 @@
+   "moduleExtensions": {
+     "//bazel:defs.bzl%non_module_dependencies": {
+       "general": {
+-        "bzlTransitiveDigest": "JT8ZLEUdrYXN19gijrHtztFq/cEAhJlRlNjhtQUlDIE=",
+-        "usagesDigest": "6n60USwsGB5Z94VzGaJhZHMgjavixB/T5boxrw8IhDU=",
++        "bzlTransitiveDigest": "HFskJJOHgrSJaxnM3n7VJ8QkpiZx+zYIg7MjQRkMYjE=",
++        "usagesDigest": "yg0EJE2wlQUw38gnpAclQlSl3982eYinohOKcXhkkT8=",
+         "recordedFileInputs": {},
+         "recordedDirentsInputs": {},
+         "envVariables": {},
+@@ -455,12 +455,12 @@
+             "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+             "ruleClassName": "http_archive",
+             "attributes": {
+-              "sha256": "32d5d9fd23998c57e746c375a544edf544b74f0a18ad6bc3c38cbba968d5e6c7",
+-              "strip_prefix": "xtensor-0.25.0",
++              "sha256": "f5f42267d850f781d71097b50567a480a82cd6875a5ec3e6238555e0ef987dc6",
++              "strip_prefix": "xtensor-0.26.0",
+               "build_file": "@@//bazel:xtensor.BUILD",
+               "type": "tar.gz",
+               "urls": [
+-                "https://github.com/xtensor-stack/xtensor/archive/refs/tags/0.25.0.tar.gz"
++                "https://github.com/xtensor-stack/xtensor/archive/refs/tags/0.26.0.tar.gz"
+               ]
+             }
+           },
+@@ -468,12 +468,12 @@
+             "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+             "ruleClassName": "http_archive",
+             "attributes": {
+-              "sha256": "44fb99fbf5e56af5c43619fc8c29aa58e5fad18f3ba6e7d9c55c111b62df1fbb",
+-              "strip_prefix": "xtl-0.7.7",
++              "sha256": "ee38153b7dd0ec84cee3361f5488a4e7e6ddd26392612ac8821cbc76e740273a",
++              "strip_prefix": "xtl-0.8.0",
+               "build_file": "@@//bazel:xtl.BUILD",
+               "type": "tar.gz",
+               "urls": [
+-                "https://github.com/xtensor-stack/xtl/archive/refs/tags/0.7.7.tar.gz"
++                "https://github.com/xtensor-stack/xtl/archive/refs/tags/0.8.0.tar.gz"
+               ]
+             }
+           }
+diff --git a/bazel/BUILD.bazel b/bazel/BUILD.bazel
+index d9aeb0d0..b2028c1b 100644
+--- a/bazel/BUILD.bazel
++++ b/bazel/BUILD.bazel
+@@ -14,6 +14,30 @@
+
+ package(default_visibility = ["//visibility:public"])
+
++# Use system preinstalled make instead of building from source
++# This avoids sandbox issues on macOS ARM64
++toolchain(
++    name = "preinstalled_make_toolchain",
++    toolchain = "@rules_foreign_cc//toolchains/private:preinstalled_make",
++    toolchain_type = "@rules_foreign_cc//toolchains:make_toolchain",
++)
++
++# Use system preinstalled cmake instead of building from source
++# This avoids sandbox issues on macOS ARM64
++toolchain(
++    name = "preinstalled_cmake_toolchain",
++    toolchain = "@rules_foreign_cc//toolchains/private:preinstalled_cmake",
++    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
++)
++
++# Use system preinstalled pkg-config instead of building from source
++# This avoids sandbox issues on macOS ARM64
++toolchain(
++    name = "preinstalled_pkgconfig_toolchain",
++    toolchain = "@rules_foreign_cc//toolchains/private:preinstalled_pkgconfig",
++    toolchain_type = "@rules_foreign_cc//toolchains:pkgconfig_toolchain",
++)
++
+ config_setting(
+     name = "spu_build_as_release",
+     values = {"compilation_mode": "opt"},
+diff --git a/bazel/repositories.bzl b/bazel/repositories.bzl
+index e33ea152..1134248d 100644
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -23,12 +23,12 @@ def _com_github_xtensor_xtensor():
+     maybe(
+         http_archive,
+         name = "xtensor",
+-        sha256 = "32d5d9fd23998c57e746c375a544edf544b74f0a18ad6bc3c38cbba968d5e6c7",
+-        strip_prefix = "xtensor-0.25.0",
++        sha256 = "f5f42267d850f781d71097b50567a480a82cd6875a5ec3e6238555e0ef987dc6",
++        strip_prefix = "xtensor-0.26.0",
+         build_file = "@spulib//bazel:xtensor.BUILD",
+         type = "tar.gz",
+         urls = [
+-            "https://github.com/xtensor-stack/xtensor/archive/refs/tags/0.25.0.tar.gz",
++            "https://github.com/xtensor-stack/xtensor/archive/refs/tags/0.26.0.tar.gz",
+         ],
+     )
+
+@@ -36,11 +36,11 @@ def _com_github_xtensor_xtl():
+     maybe(
+         http_archive,
+         name = "xtl",
+-        sha256 = "44fb99fbf5e56af5c43619fc8c29aa58e5fad18f3ba6e7d9c55c111b62df1fbb",
+-        strip_prefix = "xtl-0.7.7",
++        sha256 = "ee38153b7dd0ec84cee3361f5488a4e7e6ddd26392612ac8821cbc76e740273a",
++        strip_prefix = "xtl-0.8.0",
+         build_file = "@spulib//bazel:xtl.BUILD",
+         type = "tar.gz",
+         urls = [
+-            "https://github.com/xtensor-stack/xtl/archive/refs/tags/0.7.7.tar.gz",
++            "https://github.com/xtensor-stack/xtl/archive/refs/tags/0.8.0.tar.gz",
+         ],
+     )
+diff --git a/libspu/compiler/tools/spu-translate.cc b/libspu/compiler/tools/spu-translate.cc
+index 89903340..087eb94b 100644
+--- a/libspu/compiler/tools/spu-translate.cc
++++ b/libspu/compiler/tools/spu-translate.cc
+@@ -23,7 +23,7 @@
+ #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+ #include "mlir/Tools/mlir-translate/Translation.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/compiler/common/compilation_context.h"
+ #include "libspu/core/prelude.h"
+diff --git a/libspu/core/context.h b/libspu/core/context.h
+index e174a872..a6b42f1f 100644
+--- a/libspu/core/context.h
++++ b/libspu/core/context.h
+@@ -103,6 +103,7 @@ class KernelEvalContext final {
+       uint128_t,                   // ring constant
+       int64_t,                     //
+       SignType,                    //
++      FieldType,                   //
+       std::vector<Value>,          //
+       Axes,                        //
+       Index,                       //
+diff --git a/libspu/core/xt_helper.h b/libspu/core/xt_helper.h
+index 44921507..ff5b4f76 100644
+--- a/libspu/core/xt_helper.h
++++ b/libspu/core/xt_helper.h
+@@ -14,10 +14,10 @@
+
+ #pragma once
+
+-#include "xtensor/xadapt.hpp"
+-#include "xtensor/xeval.hpp"
+-#include "xtensor/xexpression.hpp"
+-#include "xtensor/xio.hpp"
++#include "xtensor/containers/xadapt.hpp"
++#include "xtensor/core/xeval.hpp"
++#include "xtensor/core/xexpression.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/core/ndarray_ref.h"
+ #include "libspu/core/prelude.h"
+diff --git a/libspu/device/pphlo/pphlo_executor_test.cc b/libspu/device/pphlo/pphlo_executor_test.cc
+index ebc83763..03b81067 100644
+--- a/libspu/device/pphlo/pphlo_executor_test.cc
++++ b/libspu/device/pphlo/pphlo_executor_test.cc
+@@ -20,7 +20,7 @@
+
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+-#include "xtensor/xarray.hpp"
++#include "xtensor/containers/xarray.hpp"
+
+ #include "libspu/device/utils/pphlo_executor_test_runner.h"
+
+@@ -2379,5 +2379,29 @@ func.func @main(%arg0: tensor<12xi32>, %arg1: tensor<60xi32>) -> (tensor<3x5xi
+   r.verifyOutput(expected.data());
+ }
+-
++
++TEST_P(ExecutorTest, DotGeneralRank2) {
++  Runner r(std::get<0>(GetParam()), std::get<1>(GetParam()),
++           std::get<2>(GetParam()));
++
++  std::vector<int32_t> x(2L * 3, 0);
++  std::iota(x.begin(), x.end(), 0);
++  r.addInput(x);
++
++  std::vector<int32_t> y(3L * 2, 0);
++  std::iota(y.begin(), y.end(), 0);
++  r.addInput(y);
++
++  r.run(R"(
++func.func @main(%arg0: tensor<6xi32>, %arg1: tensor<6xi32>) -> tensor<2x2xi32> {
++  %0 = pphlo.reshape %arg0 : (tensor<6xi32>) -> tensor<2x3xi32>
++  %1 = pphlo.reshape %arg1 : (tensor<6xi32>) -> tensor<3x2xi32>
++  %2 = pphlo.dot_general %0, %1, contracting_dims = [1] x [0] : (tensor<2x3xi32>, tensor<3x2xi32>) -> tensor<2x2xi32>
++  return %2 : tensor<2x2xi32>
++})");
++
++  std::vector<int32_t> expected{10, 13, 28, 40};
++  r.verifyOutput(expected.data());
++}
++
+ TEST_P(ExecutorTest, SelectAndScatter1) {
+   Runner r(std::get<0>(GetParam()), std::get<1>(GetParam()),
+diff --git a/libspu/device/pphlo/pphlo_verifier_test.cc b/libspu/device/pphlo/pphlo_verifier_test.cc
+index 8efd4f31..9e7ee8db 100644
+--- a/libspu/device/pphlo/pphlo_verifier_test.cc
++++ b/libspu/device/pphlo/pphlo_verifier_test.cc
+@@ -18,7 +18,7 @@
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/Parser/Parser.h"
+-#include "xtensor/xarray.hpp"
++#include "xtensor/containers/xarray.hpp"
+
+ #include "libspu/device/test_utils.h"
+ #include "libspu/dialect/pphlo/IR/dialect.h"
+diff --git a/libspu/kernel/hal/array_element_wise_test.cc b/libspu/kernel/hal/array_element_wise_test.cc
+index 5a80328b..bc9e9fdc 100644
+--- a/libspu/kernel/hal/array_element_wise_test.cc
++++ b/libspu/kernel/hal/array_element_wise_test.cc
+@@ -13,8 +13,8 @@
+ // limitations under the License.
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
+-#include "xtensor/xmath.hpp"
++#include "xtensor/io/xio.hpp"
++#include "xtensor/core/xmath.hpp"
+
+ #include "libspu/kernel/hal/polymorphic.h"
+ #include "libspu/kernel/test_util.h"
+diff --git a/libspu/kernel/hal/fxp_approx_test.cc b/libspu/kernel/hal/fxp_approx_test.cc
+index d540eb2b..59abc302 100644
+--- a/libspu/kernel/hal/fxp_approx_test.cc
++++ b/libspu/kernel/hal/fxp_approx_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hal/fxp_approx.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hal/constants.h"
+ #include "libspu/kernel/hal/type_cast.h"
+diff --git a/libspu/kernel/hal/fxp_base_test.cc b/libspu/kernel/hal/fxp_base_test.cc
+index 9eed4132..e5ea666f 100644
+--- a/libspu/kernel/hal/fxp_base_test.cc
++++ b/libspu/kernel/hal/fxp_base_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hal/fxp_base.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"  // TODO: dropme
++#include "xtensor/io/xio.hpp"  // TODO: dropme
+
+ #include "libspu/core/parallel_utils.h"
+ #include "libspu/kernel/hal/constants.h"
+diff --git a/libspu/kernel/hal/intrinsic/nn/BUILD.bazel b/libspu/kernel/hal/intrinsic/nn/BUILD.bazel
+new file mode 100644
+index 00000000..564ac94f
+--- /dev/null
++++ b/libspu/kernel/hal/intrinsic/nn/BUILD.bazel
+@@ -0,0 +1,42 @@
++# Copyright 2024 Ant Group Co., Ltd.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#   http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++load("//bazel:spu.bzl", "spu_cc_library", "spu_cc_test")
++
++package(default_visibility = ["//visibility:public"])
++
++spu_cc_library(
++    name = "activation",
++    srcs = ["activation.cc"],
++    hdrs = ["activation.h"],
++    deps = [
++        "//libspu/kernel/hal:fxp_approx",
++        "//libspu/kernel/hal:fxp_base",
++        "//libspu/kernel/hal:polymorphic",
++        "//libspu/mpc/cheetah:alg",
++        "//libspu/mpc/cheetah:conversion",
++    ],
++)
++
++spu_cc_test(
++    name = "activation_test",
++    srcs = ["activation_test.cc"],
++    deps = [
++        ":activation",
++        "//libspu/core:xt_helper",
++        "//libspu/device:io",
++        "//libspu/kernel/hlo:casting",
++        "//libspu/mpc:factory",
++        "//libspu/mpc/utils:simulate",
++    ],
++)
+diff --git a/libspu/kernel/hal/intrinsic/nn/activation.cc b/libspu/kernel/hal/intrinsic/nn/activation.cc
+new file mode 100644
+index 00000000..cf33414e
+--- /dev/null
++++ b/libspu/kernel/hal/intrinsic/nn/activation.cc
+@@ -0,0 +1,321 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++#include "libspu/kernel/hal/intrinsic/nn/activation.h"
++
++#include <future>
++
++#include "libspu/core/prelude.h"
++#include "libspu/core/trace.h"
++#include "libspu/core/type_util.h"
++#include "libspu/core/value.h"
++#include "libspu/kernel/hal/constants.h"
++#include "libspu/kernel/hal/fxp_approx.h"
++#include "libspu/kernel/hal/fxp_base.h"
++#include "libspu/kernel/hal/polymorphic.h"
++#include "libspu/kernel/hal/ring.h"
++#include "libspu/kernel/hal/type_cast.h"
++#include "libspu/mpc/cheetah/alg.h"
++#include "libspu/mpc/cheetah/conversion.h"
++#include "libspu/mpc/common/pv2k.h"
++
++namespace spu::kernel::hal::intrinsic::nn {
++
++static std::array<Value, 3> ComputeUptoPower4(SPUContext* ctx, const Value& x) {
++  SPU_ENFORCE(x.isFxp() and x.isSecret());
++  auto x2 = f_square(ctx, x);
++  auto x4 = f_square(ctx, x2);
++  auto x3 = f_mul(ctx, x, x2);
++  return {x2, x3, x4};
++}
++
++static std::vector<Value> ComputedBatchLessAP(SPUContext* ctx, const Value& x,
++                                              absl::Span<const float> y) {
++  std::vector<Value> ret;
++  if (not x.isSecret() || ctx->config().protocol() != ProtocolKind::CHEETAH) {
++    for (float yy : y) {
++      ret.emplace_back(f_less(ctx, x, constant(ctx, yy, x.dtype(), x.shape())));
++    }
++    return ret;
++  }
++
++  KernelEvalContext kctx(ctx);
++  auto _ret = spu::mpc::cheetah::BatchLessThan(&kctx, x.data(), y);
++  for (auto& d : _ret) {
++    d = d.reshape(x.shape());
++    ret.emplace_back(d, DT_I1);
++  }
++  return ret;
++}
++
++// sigmoid(x) for x > 0
++static Value do_f_sigmoid_positive(SPUContext* ctx, const Value& x) {
++  SPU_ENFORCE(x.isFxp() and x.isSecret());
++  // a*x^4 + b*x^3 + c*x^2 + d*x + e
++  std::array<float, 5> coeffs = {0.49352908920523014, 0.3028510171823098,
++                                 -0.06808619212463336, 0.006747908074344234,
++                                 -0.0002472776978734074};
++
++  int fxp = ctx->getFxpBits();
++  int wk_fxp = std::max(fxp, 21);  // 0.0002472776978734074 ~ 2^{-11}
++
++  auto [x2, x3, x4] = ComputeUptoPower4(ctx, x);
++
++  float scale = 1L << fxp;
++
++  auto seg_3 = _mul(ctx, x3, constant(ctx, coeffs[3], x.dtype(), x.shape()));
++  auto seg_2 = _mul(ctx, x2, constant(ctx, coeffs[2], x.dtype(), x.shape()));
++  auto seg_1 = _mul(ctx, x, constant(ctx, coeffs[1], x.dtype(), x.shape()));
++
++  auto seg_0 = constant(ctx, coeffs[0] * scale, x.dtype(), x.shape());
++  auto sigmoid = _add(ctx, seg_0, seg_1);
++  sigmoid = _add(ctx, sigmoid, seg_2);
++  sigmoid = _add(ctx, sigmoid, seg_3);
++
++  // NOTE(lwj) take care the x^4 term due to the tiny coefficient
++  auto seg_4 = _mul(
++      ctx, x4,
++      constant(ctx, coeffs[4] * (1L << (wk_fxp - fxp)), x.dtype(), x.shape()));
++  if (wk_fxp > fxp) {
++    sigmoid = _lshift(ctx, sigmoid, {wk_fxp - fxp}).setDtype(x.dtype());
++  }
++  sigmoid = _add(ctx, sigmoid, seg_4);
++
++  sigmoid = _trunc(ctx, sigmoid, wk_fxp).setDtype(x.dtype());
++
++  return sigmoid;
++}
++
++static Value do_f_seg3_gelu(SPUContext* ctx, Value x, bool small_ring_compare) {
++  SPU_ENFORCE(x.isFxp() and x.isSecret());
++
++  // Compute gelu in FM32
++  // To prevent overflow in depth-1 mul, we can not use too large fxp
++  // We approximate in x \in [-3, 3].
++  const int fxp_before = ctx->getFxpBits();
++  const int _fxp = small_ring_compare ? 12 : fxp_before;
++  const int fxp_to_drop = fxp_before - _fxp;
++  const float apprx_range = 3.0;
++
++  if (fxp_to_drop > 0) {
++    x = _trunc(ctx, x, fxp_to_drop).setDtype(x.dtype());
++    const_cast<RuntimeConfig*>(&ctx->config())
++        ->set_fxp_fraction_bits(fxp_before - fxp_to_drop);
++  }
++
++  const auto ONE = _constant(ctx, 1, x.shape());
++  const auto True = _and(ctx, ONE, ONE);
++
++  auto batch_less_than =
++      ComputedBatchLessAP(ctx, x, {-apprx_range, 0.0F, apprx_range});
++  auto b1 = _xor(ctx, batch_less_than[1], ONE);  // x >= 0.0
++  auto b2 = _xor(ctx, batch_less_than[2], ONE);  // x >= 3
++  // -3 <= x <= -3.0
++  auto b0 = _xor(ctx, _xor(ctx, ONE, batch_less_than[0]), b2);
++
++  // x = b1 ? x : -x
++  auto abs_x = _mux(ctx, b1, x, _negate(ctx, x)).setDtype(x.dtype());
++
++  // seg = a*|x|^4 + b*|x|^3 + c*|x|^2 + d*|x| + e + 0.5x
++  std::vector<float> coeffs = {0.001620808531841547, -0.03798164612714154,
++                               0.5410550166368381, -0.18352506127082727,
++                               0.020848611754127593};
++  auto [x2, x3, x4] = ComputeUptoPower4(ctx, abs_x);
++
++  float scale = 1L << ctx->getFxpBits();
++  auto seg_4 = _mul(ctx, x4, constant(ctx, coeffs[4], x.dtype(), x.shape()));
++  auto seg_3 = _mul(ctx, x3, constant(ctx, coeffs[3], x.dtype(), x.shape()));
++  auto seg_2 = _mul(ctx, x2, constant(ctx, coeffs[2], x.dtype(), x.shape()));
++  auto seg_1 = _mul(ctx, abs_x, constant(ctx, coeffs[1], x.dtype(), x.shape()));
++  auto seg_0 = constant(ctx, coeffs[0] * scale, x.dtype(), x.shape());
++  auto seg = _trunc(
++      ctx,
++      _add(ctx, _mul(ctx, x, constant(ctx, 0.5, x.dtype(), x.shape())),
++           _add(ctx, seg_0,
++                _add(ctx, seg_1, _add(ctx, seg_2, _add(ctx, seg_3, seg_4))))));
++  // x > 3
++  auto gelu = _mul(ctx, b2, x);
++  // -3 <= x  <= 3
++  gelu = _add(ctx, gelu, _mul(ctx, b0, seg));
++  gelu.setDtype(x.dtype());
++
++  if (fxp_to_drop > 0) {
++    const_cast<RuntimeConfig*>(&ctx->config())
++        ->set_fxp_fraction_bits(fxp_before);
++    gelu = _lshift(ctx, gelu, {fxp_to_drop}).setDtype(x.dtype());
++  }
++
++  return gelu;
++}
++
++Value f_seg3_gelu(SPUContext* ctx, const Value& x_, bool small_ring_compare) {
++  SPU_TRACE_HAL_LEAF(ctx, x_);
++  SPU_ENFORCE(ctx->config().protocol() == ProtocolKind::CHEETAH);
++
++  [[maybe_unused]] size_t sent = ctx->lctx()->GetStats()->sent_bytes;
++
++  // NOTE(lwj): We compute the whole seg3_gelu(x) over a smaller 32-bit ring.
++  // We first cast down the share of x to the target ring FM32.
++  auto src_field = ctx->config().field();
++  auto target_field = small_ring_compare ? FieldType::FM32 : src_field;
++
++  spu::Value x = [&]() {
++    if (src_field == target_field) {
++      // noting to do
++      return x_;
++    }
++
++    KernelEvalContext kctx(ctx);
++    mpc::cheetah::CastRing ring_change_kernel;
++
++    spu::Value ret(ring_change_kernel.proc(&kctx, x_.data(), target_field),
++                   DT_F32);
++    // Because the ring_cast operation is not supported by SPU, we need to call
++    // Cheetah's CastRing protocol directly.
++    // Also, we need mannually modify the default field in RuntimeConfig to FM32
++    // NOTE(lwj): dirty hack to change the current field
++    const_cast<RuntimeConfig*>(&ctx->config())->set_field(target_field);
++    ctx->getState<spu::mpc::Z2kState>()->setField(target_field);
++
++    return ret;
++  }();
++
++  auto gelu = do_f_seg3_gelu(ctx, x, small_ring_compare);
++
++  if (src_field != target_field) {
++    // convert the field and fxp back
++    const_cast<RuntimeConfig*>(&ctx->config())->set_field(src_field);
++    ctx->getState<spu::mpc::Z2kState>()->setField(src_field);
++
++    KernelEvalContext kctx(ctx);
++    mpc::cheetah::CastRing ring_change_kernel;
++    gelu = Value(ring_change_kernel.proc(&kctx, gelu.data(), src_field,
++                                         SignType::Unknown),
++                 x_.dtype());
++  }
++
++  sent = ctx->lctx()->GetStats()->sent_bytes - sent;
++  SPDLOG_INFO("seg3_gelu (i32{}) {} sent {} MiB", small_ring_compare,
++              gelu.numel(), sent / 1024. / 1024.);
++  return gelu;
++}
++
++Value do_f_seg4_silu(SPUContext* ctx, const Value& x,
++                     absl::Span<const Value> branch_indicators) {
++  SPU_ENFORCE(x.isFxp() and x.isSecret());
++  SPU_ENFORCE_EQ(branch_indicators.size(), 3U);
++  // branch_indicators[0] <=> |x| <= 8
++  // branch_indicators[1] <=> x >= 0
++  // branch_indicators[2] <=> x >= 8
++
++  // |x| = x >= 0.0 ? x : -x
++  auto abs_x = hal::select(ctx, branch_indicators[1], x, f_negate(ctx, x));
++
++  // sigmoid(|x|)
++  auto pos_sigmoid = do_f_sigmoid_positive(ctx, abs_x);
++
++  auto ONE = constant(ctx, 1.0, pos_sigmoid.dtype(), pos_sigmoid.shape());
++  // 1 - sigmoid(|x|)
++  auto neg_sigmoid = f_sub(ctx, ONE, pos_sigmoid);
++
++  auto sigmoid =
++      hal::select(ctx, branch_indicators[1], pos_sigmoid, neg_sigmoid);
++
++  // x >= 8
++  auto silu = _mul(ctx, branch_indicators[2], ONE);
++
++  // |x| < 8
++  silu = _add(ctx, silu, _mul(ctx, branch_indicators[0], sigmoid))
++             .setDtype(x.dtype());
++
++  return f_mul(ctx, x, silu);
++}
++
++Value f_seg4_silu(SPUContext* ctx, const Value& x, bool small_ring_compare) {
++  SPU_TRACE_HAL_LEAF(ctx, x);
++  [[maybe_unused]] size_t sent = ctx->lctx()->GetStats()->sent_bytes;
++
++  auto branch_indicators = [&]() {
++    auto src_field = ctx->config().field();
++    auto target_field = small_ring_compare ? FieldType::FM32 : src_field;
++
++    KernelEvalContext kctx(ctx);
++    mpc::cheetah::CastRing ring_change_kernel;
++
++    Value x32(ring_change_kernel.proc(&kctx, x.data(), target_field), DT_F32);
++
++    const_cast<RuntimeConfig*>(&ctx->config())->set_field(target_field);
++    ctx->getState<spu::mpc::Z2kState>()->setField(target_field);
++
++    const auto ONE = _constant(ctx, 1, x32.shape());
++    const auto True = _and(ctx, ONE, ONE);
++    // Compute branch indicators in FM32
++    auto batch_less_than = ComputedBatchLessAP(ctx, x32, {-8.0, 0.0F, 8.0});
++
++    batch_less_than[1] = _xor(ctx, batch_less_than[1], ONE);
++    batch_less_than[2] = _xor(ctx, batch_less_than[2], ONE);
++    batch_less_than[0] =
++        _xor(ctx, _xor(ctx, batch_less_than[0], batch_less_than[2]), ONE);
++
++    for (size_t i : {0, 1, 2}) {
++      // cast back to the src_field
++      batch_less_than[i] = Value(
++          ring_change_kernel.proc(&kctx, batch_less_than[i].data(), src_field),
++          DT_I1);
++    }
++
++    const_cast<RuntimeConfig*>(&ctx->config())->set_field(src_field);
++    ctx->getState<spu::mpc::Z2kState>()->setField(src_field);
++    return batch_less_than;
++  }();
++
++  auto silu = do_f_seg4_silu(ctx, x, absl::MakeSpan(branch_indicators));
++
++  sent = ctx->lctx()->GetStats()->sent_bytes - sent;
++  SPDLOG_INFO("seg4_silu {} sent {} MiB", silu.numel(), sent / 1024. / 1024.);
++
++  return silu;
++}
++
++Value f_neg_exp_taylor(SPUContext* ctx, const Value& x) {
++  SPU_TRACE_HAL_LEAF(ctx, x);
++
++  int fxp_exp_iters = ctx->config().fxp_exp_iters();
++  SPU_ENFORCE(fxp_exp_iters != 0, "fxp_exp_iters should not be {}",
++              fxp_exp_iters);
++
++  [[maybe_unused]] size_t sent = ctx->lctx()->GetStats()->sent_bytes;
++  const auto ONE = _constant(ctx, 1, x.shape());
++  const auto True = _and(ctx, ONE, ONE);
++  float neg_range = -14.0;
++  auto is_not_too_small =
++      _xor(ctx, True, ComputedBatchLessAP(ctx, x, {neg_range})[0]);
++
++  // 1 + x/2^n
++  Value res = f_add(ctx, _trunc(ctx, x, fxp_exp_iters).setDtype(x.dtype()),
++                    constant(ctx, 1.0F, x.dtype(), x.shape()));
++
++  // (1 + x/2^n)^(2^n)
++  for (int i = 0; i < fxp_exp_iters; i++) {
++    res = f_square(ctx, res);
++  }
++
++  // convert the field and fxp back
++  auto ret = _mul(ctx, is_not_too_small, res).setDtype(x.dtype());
++
++  sent = ctx->lctx()->GetStats()->sent_bytes - sent;
++  SPDLOG_INFO("f_nexp {} sent {} MiB", x.numel(), sent / 1024. / 1024.);
++  return ret;
++}
++
++}  // namespace spu::kernel::hal::intrinsic::nn
+diff --git a/libspu/kernel/hal/intrinsic/nn/activation.h b/libspu/kernel/hal/intrinsic/nn/activation.h
+new file mode 100644
+index 00000000..462a026b
+--- /dev/null
++++ b/libspu/kernel/hal/intrinsic/nn/activation.h
+@@ -0,0 +1,29 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++#pragma once
++#include "libspu/kernel/hal/fxp_base.h"
++namespace spu::kernel::hal::intrinsic::nn {
++
++// exp(clip(x, -14)) for x < 0
++Value f_neg_exp_taylor(SPUContext* ctx, const Value& x);
++
++// gelu(x)
++Value f_seg3_gelu(SPUContext* ctx, const Value& x,
++                  bool small_ring_compare = true);
++
++// silu(x)
++Value f_seg4_silu(SPUContext* ctx, const Value& x,
++                  bool small_ring_compare = true);
++
++}  // namespace spu::kernel::hal::intrinsic::nn
+diff --git a/libspu/kernel/hal/intrinsic/nn/activation_test.cc b/libspu/kernel/hal/intrinsic/nn/activation_test.cc
+new file mode 100644
+index 00000000..92bb8c9a
+--- /dev/null
++++ b/libspu/kernel/hal/intrinsic/nn/activation_test.cc
+@@ -0,0 +1,259 @@
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/kernel/hal/intrinsic/nn/activation.h"
++
++#include <random>
++
++#include "gtest/gtest.h"
++
++#include "libspu/core/xt_helper.h"
++#include "libspu/device/io.h"
++#include "libspu/kernel/hlo/casting.h"
++#include "libspu/mpc/factory.h"
++#include "libspu/mpc/utils/simulate.h"
++
++namespace spu::kernel::hal::test {
++
++class ActivationTest
++    : public ::testing::TestWithParam<std::tuple<FieldType, bool>> {};
++
++INSTANTIATE_TEST_SUITE_P(
++    Cheetah, ActivationTest,
++    testing::Combine(testing::Values(FieldType::FM32, FieldType::FM64,
++                                     FieldType::FM128),
++                     testing::Values(false)),
++    [](const testing::TestParamInfo<ActivationTest::ParamType>& p) {
++      return fmt::format("{}xCheetor_{}", std::get<0>(p.param),
++                         (std::get<1>(p.param) ? "enabled" : "disabled"));
++    });
++
++template <typename T>
++spu::Value infeed(spu::SPUContext* hctx, const xt::xarray<T>& ds) {
++  spu::device::ColocatedIo cio(hctx);
++  if (hctx->lctx()->Rank() == 0) {
++    cio.hostSetVar(fmt::format("x-{}", hctx->lctx()->Rank()), ds);
++  }
++  cio.sync();
++  auto x = cio.deviceGetVar("x-0");
++  return x;
++}
++
++TEST_P(ActivationTest, Seg3Gelu) {
++  using namespace spu::mpc;
++  FieldType field = std::get<0>(GetParam());
++  [[maybe_unused]] bool enable_cheetor = std::get<1>(GetParam());
++  Shape shape = {10, 50, 20};
++
++  std::default_random_engine rdv(std::time(0));
++  std::uniform_real_distribution<double> uniform(-7.0, 7.0);
++  std::uniform_real_distribution<double> uniform_large(-16.0, 16.0);
++
++  std::vector<size_t> _shape;
++  for (int64_t d : shape) {
++    _shape.push_back((size_t)d);
++  }
++  xt::xarray<double> _x(_shape);
++  size_t numel = _x.size();
++  std::generate_n(_x.data(), numel / 2, [&]() { return uniform(rdv); });
++  std::generate_n(_x.data() + numel / 2, numel - numel / 2,
++                  [&]() { return uniform_large(rdv); });
++
++  spu::mpc::utils::simulate(2, [&](std::shared_ptr<yacl::link::Context> lctx) {
++    spu::RuntimeConfig rt_config;
++    rt_config.set_protocol(ProtocolKind::CHEETAH);
++    rt_config.set_field(field);
++    rt_config.set_fxp_fraction_bits(field == FM32 ? 12 : 18);
++    rt_config.set_enable_hal_profile(true);
++    rt_config.set_enable_pphlo_profile(true);
++    rt_config.mutable_cheetah_2pc_config()->set_enable_mul_lsb_error(true);
++    // keep 4bits for approx less
++    // rt_config.mutable_cheetah_2pc_config()->set_approx_less_precision(4);
++
++    auto _ctx = std::make_unique<spu::SPUContext>(rt_config, lctx);
++    auto ctx = _ctx.get();
++    spu::mpc::Factory::RegisterProtocol(ctx, lctx);
++
++    auto x = infeed<double>(ctx, _x);
++
++    size_t bytes_sent = lctx->GetStats()->sent_bytes;
++    auto gelu = hal::intrinsic::nn::f_seg3_gelu(ctx, x);
++    bytes_sent = lctx->GetStats()->sent_bytes - bytes_sent;
++
++    gelu = hlo::Reveal(ctx, gelu);
++    if (lctx->Rank() == 0) {
++      return;
++    }
++
++    double fxp = std::pow(2., rt_config.fxp_fraction_bits());
++    double max_err = 0.;
++
++    DISPATCH_ALL_FIELDS(field /*, "check"*/, [&]() {
++      using sT = std::make_signed<ring2k_t>::type;
++      for (int64_t i = 0; i < gelu.numel(); ++i) {
++        double expected =
++            0.5 * _x[i] *
++            (1 + std::tanh(std::sqrt(2. / M_PI) *
++                           (_x[i] + 0.044715 * std::pow(_x[i], 3))));
++        // double expected = std::pow(_x[i], 4);
++        double got = gelu.data().at<sT>(i) / fxp;
++
++        double e = std::abs(got - expected);
++        if (e > max_err) {
++          max_err = e;
++        }
++      }
++    });
++
++    printf("seg3_gelu max error %f\n", max_err);
++  });
++}
++
++TEST_P(ActivationTest, Seg4Silu) {
++  using namespace spu::mpc;
++  FieldType field = std::get<0>(GetParam());
++  if (field == FM32) {
++    // FM32 seems not working for seg4silu
++    return;
++  }
++
++  [[maybe_unused]] bool enable_cheetor = std::get<1>(GetParam());
++  Shape shape = {1000, 500, 10};
++
++  std::default_random_engine rdv(std::time(0));
++  std::uniform_real_distribution<double> uniform(-7.0, 7.0);
++  std::uniform_real_distribution<double> uniform_large(-16.0, 16.0);
++
++  std::vector<size_t> _shape;
++  for (int64_t d : shape) {
++    _shape.push_back((size_t)d);
++  }
++
++  xt::xarray<double> _x(_shape);
++  size_t numel = _x.size();
++  std::generate_n(_x.data(), numel / 2, [&]() { return uniform(rdv); });
++  std::generate_n(_x.data() + numel / 2, numel - numel / 2,
++                  [&]() { return uniform_large(rdv); });
++
++  spu::mpc::utils::simulate(2, [&](std::shared_ptr<yacl::link::Context> lctx) {
++    spu::RuntimeConfig rt_config;
++    rt_config.set_protocol(ProtocolKind::CHEETAH);
++    rt_config.set_field(field);
++    rt_config.set_fxp_fraction_bits(16);
++    rt_config.set_enable_hal_profile(true);
++    rt_config.set_enable_pphlo_profile(true);
++    rt_config.mutable_cheetah_2pc_config()->set_enable_mul_lsb_error(true);
++    // rt_config.mutable_cheetah_2pc_config()->set_approx_less_precision(4);
++
++    auto _ctx = std::make_unique<spu::SPUContext>(rt_config, lctx);
++    auto ctx = _ctx.get();
++    spu::mpc::Factory::RegisterProtocol(ctx, lctx);
++
++    auto x = infeed<double>(ctx, _x);
++
++    size_t bytes_sent = lctx->GetStats()->sent_bytes;
++    auto gelu = hal::intrinsic::nn::f_seg4_silu(ctx, x);
++    bytes_sent = lctx->GetStats()->sent_bytes - bytes_sent;
++
++    gelu = hlo::Reveal(ctx, gelu);
++    if (lctx->Rank() == 0) {
++      return;
++    }
++
++    double fxp = std::pow(2., rt_config.fxp_fraction_bits());
++    double max_err = 0.;
++
++    DISPATCH_ALL_FIELDS(field /*, "check"*/, [&]() {
++      using sT = std::make_signed<ring2k_t>::type;
++      for (int64_t i = 0; i < gelu.numel(); ++i) {
++        // x * sigmoid(x)
++        double expected = _x[i] * (1. / (1. + std::exp(-_x[i])));
++        double got = gelu.data().at<sT>(i) / fxp;
++        double e = std::abs(got - expected);
++        if (e > max_err) {
++          max_err = e;
++        }
++      }
++    });
++
++    printf("seg4_silu max error %f\n", max_err);
++  });
++}
++
++TEST_P(ActivationTest, NegExp) {
++  using namespace spu::mpc;
++  FieldType field = std::get<0>(GetParam());
++  [[maybe_unused]] bool enable_cheetor = std::get<1>(GetParam());
++
++  Shape shape = {100, 50, 20};
++
++  std::default_random_engine rdv(std::time(0));
++  std::uniform_real_distribution<double> uniform(-12.0, 0.0);
++
++  std::vector<size_t> _shape;
++  for (int64_t d : shape) {
++    _shape.push_back((size_t)d);
++  }
++  xt::xarray<double> _x(_shape);
++  size_t numel = _x.size();
++  std::generate_n(_x.data(), numel, [&]() { return uniform(rdv); });
++
++  spu::mpc::utils::simulate(2, [&](std::shared_ptr<yacl::link::Context> lctx) {
++    spu::RuntimeConfig rt_config;
++    rt_config.set_protocol(ProtocolKind::CHEETAH);
++    rt_config.set_field(field);
++    rt_config.set_fxp_fraction_bits(field == FM32 ? 10 : 16);
++    rt_config.set_enable_hal_profile(true);
++    rt_config.set_enable_pphlo_profile(true);
++    rt_config.set_fxp_exp_iters(5);
++    rt_config.mutable_cheetah_2pc_config()->set_enable_mul_lsb_error(true);
++    // keep 4bits for approx less
++    // rt_config.mutable_cheetah_2pc_config()->set_approx_less_precision(4);
++
++    auto _ctx = std::make_unique<spu::SPUContext>(rt_config, lctx);
++    auto ctx = _ctx.get();
++    spu::mpc::Factory::RegisterProtocol(ctx, lctx);
++
++    auto x = infeed<double>(ctx, _x);
++
++    size_t bytes_sent = lctx->GetStats()->sent_bytes;
++    auto nexp = hal::intrinsic::nn::f_neg_exp_taylor(ctx, x);
++    bytes_sent = lctx->GetStats()->sent_bytes - bytes_sent;
++
++    nexp = hlo::Reveal(ctx, nexp);
++    if (lctx->Rank() == 0) {
++      return;
++    }
++
++    double fxp = std::pow(2., rt_config.fxp_fraction_bits());
++    double max_err = 0.;
++
++    DISPATCH_ALL_FIELDS(field /*, "check"*/, [&]() {
++      using sT = std::make_signed<ring2k_t>::type;
++      for (int64_t i = 0; i < nexp.numel(); ++i) {
++        double expected = std::exp(_x[i]);
++        double got = nexp.data().at<sT>(i) / fxp;
++
++        double e = std::abs(got - expected);
++        if (e > max_err) {
++          max_err = e;
++        }
++      }
++    });
++
++    printf("nexp max error %f, %f bytes per\n", max_err,
++           bytes_sent * 1. / shape.numel());
++  });
++}
++
++}  // namespace spu::kernel::hal::test
+diff --git a/libspu/kernel/hal/polymorphic_test.cc b/libspu/kernel/hal/polymorphic_test.cc
+index 45c7e877..98b0af49 100644
+--- a/libspu/kernel/hal/polymorphic_test.cc
++++ b/libspu/kernel/hal/polymorphic_test.cc
+@@ -18,10 +18,10 @@
+ #include <type_traits>
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xarray.hpp"
+-#include "xtensor/xio.hpp"
+-#include "xtensor/xmath.hpp"
+-#include "xtensor/xvectorize.hpp"
++#include "xtensor/containers/xarray.hpp"
++#include "xtensor/io/xio.hpp"
++#include "xtensor/core/xmath.hpp"
++#include "xtensor/core/xvectorize.hpp"
+
+ #include "libspu/kernel/hal/constants.h"
+ #include "libspu/kernel/hal/type_cast.h"
+diff --git a/libspu/kernel/hal/ring_test.cc b/libspu/kernel/hal/ring_test.cc
+index 438fefbe..86b90a8f 100644
+--- a/libspu/kernel/hal/ring_test.cc
++++ b/libspu/kernel/hal/ring_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hal/ring.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xarray.hpp"
++#include "xtensor/containers/xarray.hpp"
+
+ #include "libspu/kernel/test_util.h"
+
+diff --git a/libspu/kernel/hal/shape_ops_test.cc b/libspu/kernel/hal/shape_ops_test.cc
+index a58ec4ef..83ef9dcb 100644
+--- a/libspu/kernel/hal/shape_ops_test.cc
++++ b/libspu/kernel/hal/shape_ops_test.cc
+@@ -15,9 +15,9 @@
+ #include "libspu/kernel/hal/shape_ops.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xbroadcast.hpp"
+-#include "xtensor/xio.hpp"
+-#include "xtensor/xshape.hpp"
++#include "xtensor/views/xbroadcast.hpp"
++#include "xtensor/io/xio.hpp"
++#include "xtensor/core/xshape.hpp"
+
+ #include "libspu/kernel/test_util.h"
+
+diff --git a/libspu/kernel/hal/type_cast_test.cc b/libspu/kernel/hal/type_cast_test.cc
+index 8138911f..ba059671 100644
+--- a/libspu/kernel/hal/type_cast_test.cc
++++ b/libspu/kernel/hal/type_cast_test.cc
+@@ -17,7 +17,7 @@
+ #include <cstdint>
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hal/constants.h"
+ #include "libspu/kernel/test_util.h"
+diff --git a/libspu/kernel/hal/utils_test.cc b/libspu/kernel/hal/utils_test.cc
+index f221693c..6a52e46a 100644
+--- a/libspu/kernel/hal/utils_test.cc
++++ b/libspu/kernel/hal/utils_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hal/utils.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hal/polymorphic.h"
+ #include "libspu/kernel/hal/type_cast.h"
+diff --git a/libspu/kernel/hlo/permute_test.cc b/libspu/kernel/hlo/permute_test.cc
+index c1b37418..281a9e29 100644
+--- a/libspu/kernel/hlo/permute_test.cc
++++ b/libspu/kernel/hlo/permute_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hlo/permute.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/core/encoding.h"
+ #include "libspu/kernel/hal/constants.h"
+diff --git a/libspu/kernel/hlo/rank_test.cc b/libspu/kernel/hlo/rank_test.cc
+index 2b2af230..341c2816 100644
+--- a/libspu/kernel/hlo/rank_test.cc
++++ b/libspu/kernel/hlo/rank_test.cc
+@@ -15,7 +15,7 @@
+
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+-#include "xtensor/xsort.hpp"
++#include "xtensor/misc/xsort.hpp"
+
+ #include "libspu/core/context.h"
+ #include "libspu/core/value.h"
+diff --git a/libspu/kernel/hlo/select_and_scatter_test.cc b/libspu/kernel/hlo/select_and_scatter_test.cc
+index 182e8ecd..70832e38 100644
+--- a/libspu/kernel/hlo/select_and_scatter_test.cc
++++ b/libspu/kernel/hlo/select_and_scatter_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hlo/select_and_scatter.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hal/polymorphic.h"
+ #include "libspu/kernel/hal/type_cast.h"
+diff --git a/libspu/kernel/hlo/shuffle_test.cc b/libspu/kernel/hlo/shuffle_test.cc
+index ce1d494b..2fab093d 100644
+--- a/libspu/kernel/hlo/shuffle_test.cc
++++ b/libspu/kernel/hlo/shuffle_test.cc
+@@ -15,8 +15,8 @@
+ #include "libspu/kernel/hlo/shuffle.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
+-#include "xtensor/xsort.hpp"
++#include "xtensor/io/xio.hpp"
++#include "xtensor/misc/xsort.hpp"
+
+ #include "libspu/kernel/hal/type_cast.h"
+ #include "libspu/kernel/test_util.h"
+diff --git a/libspu/kernel/hlo/soprf_test.cc b/libspu/kernel/hlo/soprf_test.cc
+index 6c453442..1a7852be 100644
+--- a/libspu/kernel/hlo/soprf_test.cc
++++ b/libspu/kernel/hlo/soprf_test.cc
+@@ -15,7 +15,7 @@
+ #include "libspu/kernel/hlo/soprf.h"
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hlo/casting.h"
+ #include "libspu/kernel/hlo/const.h"
+diff --git a/libspu/kernel/hlo/sort_test.cc b/libspu/kernel/hlo/sort_test.cc
+index 89519b9e..77696277 100644
+--- a/libspu/kernel/hlo/sort_test.cc
++++ b/libspu/kernel/hlo/sort_test.cc
+@@ -20,7 +20,7 @@
+ #include <xtensor/xsort.hpp>
+
+ #include "gtest/gtest.h"
+-#include "xtensor/xio.hpp"
++#include "xtensor/io/xio.hpp"
+
+ #include "libspu/kernel/hal/polymorphic.h"
+ #include "libspu/kernel/hal/type_cast.h"
+diff --git a/libspu/kernel/hlo/utils.h b/libspu/kernel/hlo/utils.h
+index 20e4d180..13201ece 100644
+--- a/libspu/kernel/hlo/utils.h
++++ b/libspu/kernel/hlo/utils.h
+@@ -17,7 +17,7 @@
+ #include <string>
+ #include <vector>
+
+-#include "xtensor/xarray.hpp"  // IWYU pragma: keep
++#include "xtensor/containers/xarray.hpp"  // IWYU pragma: keep
+
+ #include "libspu/core/context.h"
+ #include "libspu/core/value.h"
+diff --git a/libspu/kernel/test_util.h b/libspu/kernel/test_util.h
+index 62baa3a3..29267a4f 100644
+--- a/libspu/kernel/test_util.h
++++ b/libspu/kernel/test_util.h
+@@ -12,7 +12,7 @@
+ // See the License for the specific language governing permissions and
+ // limitations under the License.
+
+-#include "xtensor/xrandom.hpp"
++#include "xtensor/generators/xrandom.hpp"
+
+ #include "libspu/core/context.h"
+ #include "libspu/core/pt_buffer_view.h"
+diff --git a/libspu/mpc/ab_api.cc b/libspu/mpc/ab_api.cc
+index 6ba634ad..66a6bd9e 100644
+--- a/libspu/mpc/ab_api.cc
++++ b/libspu/mpc/ab_api.cc
+@@ -133,6 +133,11 @@ OptionalAPI<Value> mul_a1bv(SPUContext* ctx, const Value& x, const Value& y) {
+   return NotAvailable;
+ }
+
++OptionalAPI<Value> mul_b1b(SPUContext* ctx, const Value& x, const Value& y) {
++  TRY_DISPATCH(ctx, x, y);
++  return NotAvailable;
++}
++
+ Value lshift_a(SPUContext* ctx, const Value& x, const Sizes& nbits) {
+   FORCE_DISPATCH(ctx, x, nbits);
+ }
+diff --git a/libspu/mpc/ab_api.h b/libspu/mpc/ab_api.h
+index 68cbb23f..5fbed5ba 100644
+--- a/libspu/mpc/ab_api.h
++++ b/libspu/mpc/ab_api.h
+@@ -45,6 +45,7 @@ OptionalAPI<Value> mul_av(SPUContext* ctx, const Value& x, const Value& y);
+
+ Value mul_a1b(SPUContext* ctx, const Value& x, const Value& y);
+ OptionalAPI<Value> mul_a1bv(SPUContext* ctx, const Value& x, const Value& y);
++OptionalAPI<Value> mul_b1b(SPUContext* ctx, const Value& x, const Value& y);
+
+ Value lshift_a(SPUContext* ctx, const Value& x, const Sizes& nbits);
+ Value trunc_a(SPUContext* ctx, const Value& x, size_t nbits, SignType sign);
+diff --git a/libspu/mpc/api.cc b/libspu/mpc/api.cc
+index b61a5d3e..0846cf37 100644
+--- a/libspu/mpc/api.cc
++++ b/libspu/mpc/api.cc
+@@ -435,6 +435,7 @@ Value add_pp(SPUContext* ctx, const Value& x, const Value& y) {
+ //////////////////////////////////////////////////////////////////////////////
+
+ static bool hasMulA1B(SPUContext* ctx) { return ctx->hasKernel("mul_a1b"); }
++static bool hasMulB1B(SPUContext* ctx) { return ctx->hasKernel("mul_b1b"); }
+
+ Value mul_ss(SPUContext* ctx, const Value& x, const Value& y) {
+   SPU_TRACE_MPC_DISP(ctx, x, y);
+@@ -446,11 +447,24 @@ Value mul_ss(SPUContext* ctx, const Value& x, const Value& y) {
+   if (hasMulA1B(ctx) && IsA(x) && IsB(y) && NBits(y) == 1) {
+     return mul_a1b(ctx, x, y);
+   }
+-
+   // NOTE(juhou): Multiplication of two bits
+   if (IsB(x) && NBits(x) == 1 && IsB(y) && NBits(y) == 1) {
+     return and_bb(ctx, x, y);
+   }
++  if (hasMulB1B(ctx) && IsB(x) && IsB(y) && NBits(x) == 1) {
++    auto opt = mul_b1b(ctx, y, x);
++    if (opt.has_value()) {
++      return opt.value();
++    }
++    return mul_aa(ctx, _2a(ctx, x), _2a(ctx, y));
++  }
++  if (hasMulB1B(ctx) && IsB(x) && IsB(y) && NBits(y) == 1) {
++    auto opt = mul_b1b(ctx, x, y);
++    if (opt.has_value()) {
++      return opt.value();
++    }
++    return mul_aa(ctx, _2a(ctx, x), _2a(ctx, y));
++  }
+   return mul_aa(ctx, _2a(ctx, x), _2a(ctx, y));
+ }
+
+diff --git a/libspu/mpc/cheetah/BUILD.bazel b/libspu/mpc/cheetah/BUILD.bazel
+index 53b29780..1132aaf4 100644
+--- a/libspu/mpc/cheetah/BUILD.bazel
++++ b/libspu/mpc/cheetah/BUILD.bazel
+@@ -38,6 +38,16 @@ spu_cc_library(
+     ],
+ )
+
++spu_cc_library(
++    name = "tiled_dispatch",
++    srcs = ["tiled_dispatch.cc"],
++    hdrs = ["tiled_dispatch.h"],
++    deps = [
++        ":state",
++        "//libspu/mpc/cheetah/ot",
++    ],
++)
++
+ spu_cc_library(
+     name = "boolean",
+     srcs = [
+@@ -59,10 +69,12 @@ spu_cc_library(
+     copts = AES_COPT_FLAGS,
+     deps = [
+         ":state",
++        ":tiled_dispatch",
+         ":type",
+         "//libspu/core:vectorize",
+         "//libspu/mpc:ab_api",
+         "//libspu/mpc:kernel",
++        "//libspu/mpc/cheetah/nonlinear:ring_ext_prot",
+         "//libspu/mpc/common:communicator",
+     ],
+ )
+@@ -97,6 +109,19 @@ spu_cc_library(
+     ],
+ )
+
++spu_cc_library(
++    name = "alg",
++    srcs = ["alg.cc"],
++    hdrs = ["alg.h"],
++    deps = [
++        ":arithmetic",
++        ":boolean",
++        ":conversion",
++        ":tiled_dispatch",
++        "//libspu/core:encoding",
++    ],
++)
++
+ spu_cc_test(
+     name = "protocol_api_test",
+     size = "large",
+diff --git a/libspu/mpc/cheetah/alg.cc b/libspu/mpc/cheetah/alg.cc
+new file mode 100644
+index 00000000..11c3a60c
+--- /dev/null
++++ b/libspu/mpc/cheetah/alg.cc
+@@ -0,0 +1,174 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/mpc/cheetah/alg.h"
++
++#include "libspu/core/encoding.h"
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/trace.h"
++#include "libspu/core/type.h"
++#include "libspu/mpc/cheetah/conversion.h"
++#include "libspu/mpc/cheetah/nonlinear/compare_prot.h"
++#include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
++#include "libspu/mpc/cheetah/tiled_dispatch.h"
++#include "libspu/mpc/cheetah/type.h"
++#include "libspu/mpc/common/communicator.h"
++#include "libspu/mpc/utils/ring_ops.h"
++
++namespace spu::mpc::cheetah {
++
++template <typename T>
++static T makeBitsMask(size_t nbits) {
++  size_t max = sizeof(T) * 8;
++  if (nbits == 0) {
++    nbits = max;
++  }
++  SPU_ENFORCE(nbits <= max);
++  T mask = static_cast<T>(-1);
++  if (nbits < max) {
++    mask = (static_cast<T>(1) << nbits) - 1;
++  }
++  return mask;
++}
++
++static NdArrayRef batch_less_ap(KernelEvalContext* kctx, const NdArrayRef& x,
++                                absl::Span<const float> y);
++
++NdArrayRef batch_less_ap(KernelEvalContext* kctx, const NdArrayRef& x,
++                         absl::Span<const float> y) {
++  SPU_TRACE_MPC_LEAF(kctx->sctx());
++  const int64_t numel = x.numel();
++  const int64_t batch_size = y.size();
++
++  const int fxp = kctx->sctx()->config().fxp_fraction_bits();
++  const auto field = x.eltype().as<spu::Ring2k>()->field();
++  const int rank = kctx->getState<Communicator>()->getRank();
++  const int choice_provider = CompareProtocol::BatchedChoiceProvider();
++
++  // CMP([x] > y) <=> MSB([x] - y) <=> 1{z0 > 2^{k-1} - z1}
++  // Step 1: [x], y => [z] = [x - y]
++  // x - y1, x - y2, ..., x - yB
++  NdArrayRef msb_input;
++  Shape ext_shape = x.shape();
++  ext_shape.insert(ext_shape.end(), rank == choice_provider ? 1 : batch_size);
++
++  if (rank != choice_provider) {
++    msb_input = NdArrayRef(x.eltype(), ext_shape);
++    DISPATCH_ALL_FIELDS(field /*, "subtract"*/, [&]() {
++      NdArrayView<ring2k_t> msb_inp(msb_input);
++      for (int64_t b = 0; b < batch_size; ++b) {
++        NdArrayView<const ring2k_t> _x(x);
++        ring2k_t encoded_y =
++            encodeToRing(PtBufferView(y[b]), field, fxp).at<ring2k_t>(0);
++
++        pforeach(0, numel, [&](int64_t i) {
++          msb_inp[i * batch_size + b] = _x[i] - encoded_y;
++        });
++      }
++    });
++  } else {
++    msb_input = x.clone().reshape(ext_shape);
++  }
++
++  // Step 2: approximated MSB via dropping the low-end bits of each share
++  //   int approx_less_prec = std::max(
++  //       0,
++  //       kctx->sctx()->config().cheetah_2pc_config().approx_less_precision());
++
++  // TODO: tune this parameter
++  // https://github.com/AntCPLab/OpenBumbleBee/blob/47c5560d069543591f3b0176eb530ede28e33fc3/libspu/kernel/hal/intrinsic/nn/activation_test.cc#L81
++  int approx_less_prec = std::max(0, 4);
++  size_t bitwidth = SizeOf(field) * 8;
++
++  if (approx_less_prec > 0 and approx_less_prec < fxp) {
++    size_t bits_skip = fxp - approx_less_prec;
++    ring_rshift_(msb_input, {(int64_t)bits_skip});  // local truncate
++    bitwidth -= bits_skip;
++  }
++
++  return DISPATCH_ALL_FIELDS(field /*, "cf2_mill"*/, [&]() {
++    using u2k = std::make_unsigned<ring2k_t>::type;
++    const u2k mask = makeBitsMask<u2k>(bitwidth - 1);
++
++    NdArrayView<const u2k> msb_inp(msb_input);
++    NdArrayRef mill_input = ring_zeros(field, msb_input.shape());
++    NdArrayView<u2k> mill_inp(mill_input);
++    // Step 3: Compute MSB([z]) = msb(z0) ^ msb(z1) ^ 1{z0 > 2^{k - 1} - 1 - z1}
++    if (rank != choice_provider) {
++      SPU_ENFORCE_EQ(numel * batch_size, mill_input.numel());
++      // z0
++      pforeach(0, numel * batch_size,
++               [&](int64_t i) { mill_inp[i] = msb_inp[i] & mask; });
++    } else {
++      SPU_ENFORCE_EQ(numel, mill_input.numel());
++      // 2^{k - 1} - 1 - z1
++      pforeach(0, numel,
++               [&](int64_t i) { mill_inp[i] = (mask - msb_inp[i]) & mask; });
++    }
++
++    auto boolean_t = makeType<BShrTy>(field, 1);
++
++    NdArrayRef out = DispatchUnaryFuncWithBatchedInput(
++        kctx, mill_input, rank != choice_provider, batch_size,
++        [&](const NdArrayRef& inp,
++            const std::shared_ptr<BasicOTProtocols>& base) {
++          CompareProtocol comp_prot(base);
++
++          int64_t numel = inp.numel();
++          if (rank != choice_provider) {
++            numel /= batch_size;
++          }
++          return comp_prot.BatchCompute(inp, true, numel, bitwidth, batch_size);
++        });
++
++    // Finally, local XOR the msb of the input share (i.e., msb(z0), msb(z1))
++    if (rank != choice_provider) {
++      NdArrayView<u2k> xcarry(out);
++      pforeach(0, numel * batch_size, [&](int64_t i) {
++        xcarry[i] ^= ((msb_inp[i] >> (bitwidth - 1)) & 1);
++      });
++    } else {
++      NdArrayView<u2k> xcarry(out);
++      pforeach(0, numel * batch_size, [&](int64_t i) {
++        xcarry[i] ^= (((msb_inp[i / batch_size]) >> (bitwidth - 1)) & 1);
++      });
++    }
++
++    return out.as(boolean_t);
++  });
++}
++
++std::vector<NdArrayRef> BatchLessThan(KernelEvalContext* kctx,
++                                      const NdArrayRef& x,
++                                      absl::Span<const float> y) {
++  SPU_ENFORCE(not y.empty());
++  // x[0] < y[0], x[0] < y[1], ..., x[0] < y[B]
++
++  auto batch_cmp = batch_less_ap(kctx, x, y);
++
++  Index start_indices(batch_cmp.shape().size());
++  Index end_indices(batch_cmp.shape().begin(), batch_cmp.shape().end());
++
++  std::vector<NdArrayRef> out;
++  int64_t batch = y.size();
++  for (int64_t b = 0; b < batch; ++b) {
++    start_indices.back() = b;
++    end_indices.back() = b + 1;
++    auto slice =
++        batch_cmp.slice(start_indices, end_indices, {}).reshape(x.shape());
++    out.emplace_back(slice);
++  }
++  return out;
++}
++}  // namespace spu::mpc::cheetah
+\ No newline at end of file
+diff --git a/libspu/mpc/cheetah/alg.h b/libspu/mpc/cheetah/alg.h
+new file mode 100644
+index 00000000..c5e8e7ac
+--- /dev/null
++++ b/libspu/mpc/cheetah/alg.h
+@@ -0,0 +1,28 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <array>
++
++#include "libspu/core/context.h"
++
++namespace spu::mpc::cheetah {
++
++// Compute a batch of less than between a secret and a batch of public value
++// [x], y0, y1, ..., yB => less(x < y0), less(x < y1), .., less(x < yB)
++std::vector<NdArrayRef> BatchLessThan(KernelEvalContext* kctx,
++                                      const NdArrayRef& x,
++                                      absl::Span<const float> y);
++}  // namespace spu::mpc::cheetah
+\ No newline at end of file
+diff --git a/libspu/mpc/cheetah/arith/conv2d_prot.cc b/libspu/mpc/cheetah/arith/conv2d_prot.cc
+index 64fc3e6e..295b8c50 100644
+--- a/libspu/mpc/cheetah/arith/conv2d_prot.cc
++++ b/libspu/mpc/cheetah/arith/conv2d_prot.cc
+@@ -432,7 +432,7 @@ ArrayRef Conv2DProtocol::ParseResult(FieldType field, const Meta &meta,
+             msh.ModulusDownRNS(field, {poly_deg_}, MakeSpan(rlwe[poly_idx++]));
+         auto *coeff_iter = coefficients.data();
+
+-        DISPATCH_ALL_FIELDS(field, "ParseResult", [&]() {
++        DISPATCH_ALL_FIELDS(field, [&]() {
+           auto xcomputed = xt_adapt<ring2k_t>(computed);
+           auto xc = xt_mutable_adapt<ring2k_t>(computed_tensor);
+           for (int64_t hh = 0; hh < slice_shape[kH]; ++hh) {
+diff --git a/libspu/mpc/cheetah/arith/tensor_encoder.cc b/libspu/mpc/cheetah/arith/tensor_encoder.cc
+index 5c2b17ad..f725dab1 100644
+--- a/libspu/mpc/cheetah/arith/tensor_encoder.cc
++++ b/libspu/mpc/cheetah/arith/tensor_encoder.cc
+@@ -120,7 +120,7 @@ ArrayRef TensorEncoder::Tensor2Poly(const Shape3D &input_shape,
+   Shape3D shape = isze == numel ? input_shape : kernel_shape;
+
+   const auto field = tensor.field();
+-  return DISPATCH_ALL_FIELDS(field, "Tensor2Poly", [&]() {
++  return DISPATCH_ALL_FIELDS(field, [&]() {
+     NdArrayRef _flatten = ring_zeros(field, {N});
+     auto f = xt_mutable_adapt<ring2k_t>(_flatten);
+     for (long c = 0; c < shape[kC]; ++c) {
+diff --git a/libspu/mpc/cheetah/arithmetic.cc b/libspu/mpc/cheetah/arithmetic.cc
+index fbf85043..0838dbc5 100644
+--- a/libspu/mpc/cheetah/arithmetic.cc
++++ b/libspu/mpc/cheetah/arithmetic.cc
+@@ -170,6 +170,24 @@ NdArrayRef MulA1B::proc(KernelEvalContext* ctx, const NdArrayRef& ashr,
+       .as(ashr.eltype());
+ }
+
++NdArrayRef MulB1B::proc(KernelEvalContext* ctx, const NdArrayRef& Bshr,
++                        const NdArrayRef& bshr) const {
++  SPU_ENFORCE_EQ(Bshr.shape(), bshr.shape());
++  const int64_t numel = Bshr.numel();
++
++  if (numel == 0) {
++    return NdArrayRef(Bshr.eltype(), Bshr.shape());
++  }
++
++  return TiledDispatchOTFunc(
++             ctx, Bshr, bshr,
++             [&](const NdArrayRef& input0, const NdArrayRef& input1,
++                 const std::shared_ptr<BasicOTProtocols>& base_ot) {
++               return base_ot->Multiplexer_gf2(input0, input1);
++             })
++      .as(Bshr.eltype());
++}
++
+ NdArrayRef MulA1BV::proc(KernelEvalContext* ctx, const NdArrayRef& ashr,
+                          const NdArrayRef& bshr) const {
+   auto* comm = ctx->getState<Communicator>();
+diff --git a/libspu/mpc/cheetah/arithmetic.h b/libspu/mpc/cheetah/arithmetic.h
+index ebbb0ffa..2909fdf5 100644
+--- a/libspu/mpc/cheetah/arithmetic.h
++++ b/libspu/mpc/cheetah/arithmetic.h
+@@ -121,6 +121,16 @@ class MulA1B : public BinaryKernel {
+                   const NdArrayRef& bshr) const override;
+ };
+
++class MulB1B : public BinaryKernel {
++ public:
++  static constexpr const char* kBindName() { return "mul_b1b"; }
++
++  Kind kind() const override { return Kind::Dynamic; }
++
++  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& Bshr,
++                  const NdArrayRef& bshr) const override;
++};
++
+ class MulA1BV : public BinaryKernel {
+  public:
+   static constexpr const char* kBindName() { return "mul_a1bv"; }
+diff --git a/libspu/mpc/cheetah/conversion.cc b/libspu/mpc/cheetah/conversion.cc
+index 07ad6a4b..d0054c8c 100644
+--- a/libspu/mpc/cheetah/conversion.cc
++++ b/libspu/mpc/cheetah/conversion.cc
+@@ -17,8 +17,10 @@
+ #include "libspu/core/ndarray_ref.h"
+ #include "libspu/core/trace.h"
+ #include "libspu/mpc/ab_api.h"
++#include "libspu/mpc/cheetah/nonlinear/ring_ext_prot.h"
+ #include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
+ #include "libspu/mpc/cheetah/state.h"
++#include "libspu/mpc/cheetah/tiled_dispatch.h"
+ #include "libspu/mpc/cheetah/type.h"
+ #include "libspu/mpc/common/prg_state.h"
+ #include "libspu/mpc/common/pv2k.h"
+@@ -84,4 +86,79 @@ void CommonTypeV::evaluate(KernelEvalContext* ctx) const {
+   ctx->pushOutput(makeType<AShrTy>(std::max(lhs_v->field(), rhs_v->field())));
+ }
+
++void CastRing::evaluate(KernelEvalContext* ctx) const {
++  const auto& val = ctx->getParam<Value>(0);
++  const auto& ftype = ctx->getParam<FieldType>(1);
++  const auto& sign = ctx->getParam<SignType>(2);
++
++  auto res = proc(ctx, UnwrapValue(val), ftype, sign);
++
++  ctx->pushOutput(WrapValue(res));
++}
++
++NdArrayRef CastRing::proc(KernelEvalContext* ctx, const NdArrayRef& in,
++                          const FieldType& ftype, SignType in_sign) const {
++  SPU_ENFORCE(in.eltype().isa<AShrTy>() or in.eltype().isa<BShrTy>(), "{}",
++              in.eltype());
++
++  const auto field = in.eltype().as<RingTy>()->field();
++  const auto numel = in.numel();
++  const size_t k = SizeOf(field) * 8;
++  const size_t to_bits = SizeOf(ftype) * 8;
++
++  if (to_bits == k) {
++    // euqal ring size, do nothing
++    return in;
++  }
++
++  NdArrayRef res;
++  if (in.eltype().isa<mpc::cheetah::BShrTy>()) {
++    const auto* in_type = in.eltype().as<BShrTy>();
++    SPU_ENFORCE(in_type->nbits() <= to_bits);
++    res = NdArrayRef(makeType<BShrTy>(ftype, in_type->nbits()), in.shape());
++  } else {
++    res = NdArrayRef(makeType<AShrTy>(ftype), in.shape());
++  }
++
++  if (to_bits < k or in.eltype().isa<mpc::cheetah::BShrTy>()) {
++    // cast down is a local procedure
++    return DISPATCH_ALL_FIELDS(field /*, "cheetah.ring_cast"*/, [&]() {
++      using from_ring2k_t = ring2k_t;
++      return DISPATCH_ALL_FIELDS(ftype /*, "cheetah.ring_cast"*/, [&]() {
++        using to_ring2k_t = ring2k_t;
++
++        NdArrayView<const from_ring2k_t> _in(in);
++        NdArrayView<to_ring2k_t> _res(res);
++
++        pforeach(0, numel, [&](int64_t idx) {
++          _res[idx] = static_cast<to_ring2k_t>(_in[idx]);
++        });
++        return res;
++      });
++    });
++  }
++
++  // call RingExtProtocol
++  return DispatchUnaryFunc(
++             ctx, in,
++             [&](const NdArrayRef& input,
++                 const std::shared_ptr<BasicOTProtocols>& base_ot) {
++               RingExtendProtocol ext_prot(base_ot);
++               RingExtendProtocol::Meta meta;
++
++               meta.sign = SignType::Unknown;
++               meta.signed_arith = true;
++               meta.use_heuristic = true;
++
++               meta.src_ring = field;
++               meta.src_width = SizeOf(meta.src_ring) * 8;
++
++               meta.dst_ring = ftype;
++               meta.dst_width = SizeOf(meta.dst_ring) * 8;
++
++               return ext_prot.Compute(input, meta);
++             })
++      .as(makeType<AShrTy>(ftype));
++}
++
+ }  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/conversion.h b/libspu/mpc/cheetah/conversion.h
+index ad468801..3ad755c3 100644
+--- a/libspu/mpc/cheetah/conversion.h
++++ b/libspu/mpc/cheetah/conversion.h
+@@ -49,4 +49,17 @@ class CommonTypeV : public Kernel {
+   void evaluate(KernelEvalContext* ctx) const override;
+ };
+
++class CastRing : public Kernel {
++ public:
++  static constexpr char kBindName[] = "cast_ring_a";
++
++  Kind kind() const override { return Kind::Dynamic; }
++
++  void evaluate(KernelEvalContext* ctx) const override;
++
++  NdArrayRef proc(KernelEvalContext* ctx, const NdArrayRef& in,
++                  const FieldType& ftype,
++                  SignType in_sign = SignType::Unknown) const;
++};
++
+ }  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/io.cc b/libspu/mpc/cheetah/io.cc
+index 1fe02d47..f06527e1 100644
+--- a/libspu/mpc/cheetah/io.cc
++++ b/libspu/mpc/cheetah/io.cc
+@@ -29,6 +29,10 @@ Type CheetahIo::getShareType(Visibility vis, int owner_rank) const {
+     } else {
+       return makeType<AShrTy>(field_);
+     }
++  } else if (vis == VIS_PRIVATE) {
++    if (owner_rank >= 0 && owner_rank < static_cast<int>(world_size_)) {
++      return makeType<Priv2kTy>(field_, owner_rank);
++    }
+   }
+
+   SPU_THROW("unsupported vis type {}", vis);
+@@ -46,7 +50,7 @@ std::vector<NdArrayRef> CheetahIo::toShares(const NdArrayRef& raw,
+   if (vis == VIS_PUBLIC) {
+     const auto share = raw.as(makeType<Pub2kTy>(field));
+     return std::vector<NdArrayRef>(world_size_, share);
+-  } else if (vis == VIS_SECRET) {
++  } else if (vis == VIS_SECRET || vis == VIS_PRIVATE) {
+     if (owner_rank >= 0 && owner_rank < static_cast<int>(world_size_)) {
+       // indicates private
+       std::vector<NdArrayRef> shares;
+diff --git a/libspu/mpc/cheetah/nonlinear/BUILD.bazel b/libspu/mpc/cheetah/nonlinear/BUILD.bazel
+index 8669cf31..f7fcb1af 100644
+--- a/libspu/mpc/cheetah/nonlinear/BUILD.bazel
++++ b/libspu/mpc/cheetah/nonlinear/BUILD.bazel
+@@ -54,6 +54,13 @@ spu_cc_library(
+     ],
+ )
+
++spu_cc_library(
++    name = "ring_ext_prot",
++    srcs = ["ring_ext_prot.cc"],
++    hdrs = ["ring_ext_prot.h"],
++    deps = [":compare_prot"],
++)
++
+ spu_cc_test(
+     name = "compare_prot_test",
+     srcs = ["compare_prot_test.cc"],
+@@ -83,3 +90,12 @@ spu_cc_test(
+         "//libspu/mpc/utils:simulate",
+     ],
+ )
++
++spu_cc_test(
++    name = "ring_ext_prot_test",
++    srcs = ["ring_ext_prot_test.cc"],
++    deps = [
++        ":ring_ext_prot",
++        "//libspu/mpc/utils:simulate",
++    ],
++)
+diff --git a/libspu/mpc/cheetah/nonlinear/compare_prot.cc b/libspu/mpc/cheetah/nonlinear/compare_prot.cc
+index 94d8b2a1..72eba7cd 100644
+--- a/libspu/mpc/cheetah/nonlinear/compare_prot.cc
++++ b/libspu/mpc/cheetah/nonlinear/compare_prot.cc
+@@ -14,49 +14,57 @@
+
+ #include "libspu/mpc/cheetah/nonlinear/compare_prot.h"
+
+-#include "yacl/crypto/rand/rand.h"
+ #include "yacl/crypto/tools/prg.h"
++#include "yacl/link/link.h"
+
+ #include "libspu/core/type.h"
+ #include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
+ #include "libspu/mpc/cheetah/ot/ot_util.h"
+ #include "libspu/mpc/cheetah/type.h"
++#include "libspu/mpc/common/communicator.h"
+ #include "libspu/mpc/utils/ring_ops.h"
+
+ namespace spu::mpc::cheetah {
+
+-CompareProtocol::CompareProtocol(const std::shared_ptr<BasicOTProtocols>& base,
+-                                 size_t compare_radix)
+-    : compare_radix_(compare_radix), basic_ot_prot_(base) {
+-  SPU_ENFORCE(base != nullptr);
+-  SPU_ENFORCE(compare_radix_ >= 1 && compare_radix_ <= 8);
+-  is_sender_ = base->Rank() == 0;
+-}
+-
+-CompareProtocol::~CompareProtocol() { basic_ot_prot_->Flush(); }
+-
++namespace {
+ void SetLeafOTMsg(absl::Span<uint8_t> ot_messages, uint8_t digit,
+-                  uint8_t rnd_cmp_bit, uint8_t rnd_eq_bit, bool gt) {
++                  uint8_t rnd_cmp_bit, uint8_t rnd_eq_bit, bool gt,
++                  size_t batch_shift = 0) {
+   size_t N = ot_messages.size();
+-  SPU_ENFORCE(digit <= N, fmt::format("N={} got digit={}", N, digit));
++  SPU_ENFORCE(digit <= N, "N={} got digit={}", N, digit);
+   for (size_t i = 0; i < N; i++) {
++    uint8_t eq_cmp = 0;
+     if (gt) {
+-      ot_messages[i] = rnd_cmp_bit ^ static_cast<uint8_t>(digit > i);
++      eq_cmp = rnd_cmp_bit ^ static_cast<uint8_t>(digit > i);
+     } else {
+-      ot_messages[i] = rnd_cmp_bit ^ static_cast<uint8_t>(digit < i);
++      eq_cmp = rnd_cmp_bit ^ static_cast<uint8_t>(digit < i);
+     }
+-
+     // compact two bits into one OT message
+-    ot_messages[i] |= ((rnd_eq_bit ^ static_cast<uint8_t>(digit == i)) << 1);
++    eq_cmp |= ((rnd_eq_bit ^ static_cast<uint8_t>(digit == i)) << 1);
++
++    // compact batch eq and cmp bits into one OT message
++    // NOTE(lwj) Now only support Batch size <= 4
++    ot_messages[i] |= (eq_cmp << batch_shift);
+   }
+ }
++}  // namespace
++   //
++CompareProtocol::CompareProtocol(const std::shared_ptr<BasicOTProtocols>& base,
++                                 size_t compare_radix)
++    : compare_radix_(compare_radix), basic_ot_prot_(base) {
++  SPU_ENFORCE(base != nullptr);
++  SPU_ENFORCE(compare_radix_ >= 1 && compare_radix_ <= 8);
++  is_sender_ = base->Rank() != BatchedChoiceProvider();
++}
++
++CompareProtocol::~CompareProtocol() { basic_ot_prot_->Flush(); }
+
+ // The Mill protocol from "CrypTFlow2: Practical 2-Party Secure Inference"
+ // Algorithm 1. REF: https://arxiv.org/pdf/2010.06457.pdf
+ NdArrayRef CompareProtocol::DoCompute(const NdArrayRef& inp, bool greater_than,
+                                       NdArrayRef* keep_eq, int64_t bitwidth) {
+   auto field = inp.eltype().as<Ring2k>()->field();
+-  int64_t num_digits = CeilDiv(bitwidth, static_cast<int64_t>(compare_radix_));
++  int64_t num_digits = CeilDiv(bitwidth, (int64_t)compare_radix_);
+   size_t radix = static_cast<size_t>(1) << compare_radix_;  // one-of-N OT
+   int64_t num_cmp = inp.numel();
+   // init to all zero
+@@ -80,7 +88,7 @@ NdArrayRef CompareProtocol::DoCompute(const NdArrayRef& inp, bool greater_than,
+   std::vector<uint8_t> leaf_eq(num_cmp * num_digits, 0);
+   if (is_sender_) {
+     // Step 2 sample random bits
+-    yacl::crypto::Prg<uint8_t> prg(yacl::crypto::SecureRandSeed());
++    yacl::crypto::Prg<uint8_t> prg;
+     prg.Fill(absl::MakeSpan(leaf_cmp));
+     prg.Fill(absl::MakeSpan(leaf_eq));
+
+@@ -432,6 +440,135 @@ NdArrayRef CompareProtocol::TraversalAND(NdArrayRef cmp, NdArrayRef eq,
+   return subtree_cmp;
+ }
+
++NdArrayRef CompareProtocol::DoBatchCompute(const NdArrayRef& inp,
++                                           bool greater_than, int64_t numelt,
++                                           int64_t bitwidth,
++                                           int64_t batch_size) {
++  auto field = inp.eltype().as<Ring2k>()->field();
++  SPU_ENFORCE(batch_size);
++  SPU_ENFORCE(bitwidth > 0 && bitwidth <= (int)SizeOf(field) * 8);
++
++  if (bitwidth % compare_radix_ != 0) {
++    bitwidth = CeilDiv<int64_t>(bitwidth, compare_radix_) * compare_radix_;
++  }
++
++  auto num_digits = CeilDiv<int64_t>(bitwidth, compare_radix_);
++  size_t radix = static_cast<size_t>(1) << compare_radix_;  // one-of-N OT
++  size_t num_cmp = numelt * batch_size;
++  // init to all zero
++  std::vector<uint8_t> digits(inp.numel() * num_digits, 0);
++
++  // Step 1 break into digits \in [0, radix)
++  DISPATCH_ALL_FIELDS(field, [&]() {
++    using u2k = std::make_unsigned<ring2k_t>::type;
++    const auto mask_radix = makeBitsMask<u2k>(compare_radix_);
++    NdArrayView<u2k> xinp(inp);
++
++    for (int64_t i = 0; i < inp.numel(); ++i) {
++      for (int64_t j = 0; j < num_digits; ++j) {
++        uint32_t shft = j * compare_radix_;
++        digits[i * num_digits + j] = (xinp[i] >> shft) & mask_radix;
++      }
++    }
++  });
++
++  std::vector<uint8_t> leaf_cmp(num_cmp * num_digits, 0);
++  std::vector<uint8_t> leaf_eq(num_cmp * num_digits, 0);
++  if (is_sender_) {
++    // NOTE(lwj): sender holds the batched message and receiver inputs the
++    // choice bits
++    // Step 2 sample random bits
++    yacl::crypto::Prg<uint8_t> prg;
++    prg.Fill(absl::MakeSpan(leaf_cmp));
++    prg.Fill(absl::MakeSpan(leaf_eq));
++    // convert to boolean
++    std::transform(leaf_cmp.begin(), leaf_cmp.end(), leaf_cmp.data(),
++                   [](uint8_t v) { return v & 1; });
++    std::transform(leaf_eq.begin(), leaf_eq.end(), leaf_eq.data(),
++                   [](uint8_t v) { return v & 1; });
++
++    // Step 6-7 set the OT messages with two packed bits (one for compare, one
++    // for equal)
++    std::vector<uint8_t> _leaf_ot_msg(radix * numelt * num_digits, 0);
++    auto leaf_ot_msg = absl::MakeSpan(_leaf_ot_msg);
++    std::vector<absl::Span<uint8_t> > each_leaf_ot_msg(numelt * num_digits);
++    for (size_t i = 0; i < each_leaf_ot_msg.size(); ++i) {
++      each_leaf_ot_msg[i] = leaf_ot_msg.subspan(i * radix, radix);
++    }
++
++    for (int64_t i = 0; i < numelt; ++i) {
++      for (int64_t j = 0; j < batch_size; ++j) {
++        auto* this_ot_msg = each_leaf_ot_msg.data() + i * num_digits;
++        auto* this_digit = digits.data() + (i * batch_size + j) * num_digits;
++        auto* this_leaf_cmp =
++            leaf_cmp.data() + (i * batch_size + j) * num_digits;
++        auto* this_leaf_eq = leaf_eq.data() + (i * batch_size + j) * num_digits;
++
++        for (int64_t k = 0; k < num_digits; ++k) {
++          uint8_t rnd_cmp = this_leaf_cmp[k];
++          uint8_t rnd_eq = this_leaf_eq[k];
++          SetLeafOTMsg(this_ot_msg[k], this_digit[k], rnd_cmp, rnd_eq,
++                       greater_than, /*offset*/ j * 2);
++        }
++      }
++    }
++
++    // Step 9: sender of n*M instances of 1-of-N OT
++    basic_ot_prot_->GetSenderCOT()->SendCMCC(leaf_ot_msg, radix,
++                                             /*ot_bitwidth*/ batch_size * 2);
++    basic_ot_prot_->GetSenderCOT()->Flush();
++  } else {
++    // Step 10: receiver of 1-of-N OT
++    std::vector<uint8_t> packed_cmp(numelt * num_digits, 0);
++    basic_ot_prot_->GetReceiverCOT()->RecvCMCC(
++        absl::MakeConstSpan(digits), radix, absl::MakeSpan(packed_cmp),
++        /*bitwidth*/ batch_size * 2);
++
++    // extract equality bits from packed messages
++    // See `SetLeafOTMsg`
++    // Need to unpack the cmp array from batch
++    // eq_n||cmp_n||eq_n-1||cmp_n-1||...||eq0||cmp0
++    for (int64_t i = 0; i < numelt; ++i) {
++      auto* this_pack_cmp = packed_cmp.data() + i * num_digits;
++      for (int64_t j = 0; j < batch_size; ++j) {
++        auto* this_leaf_cmp =
++            leaf_cmp.data() + (i * batch_size + j) * num_digits;
++        auto* this_leaf_eq = leaf_eq.data() + (i * batch_size + j) * num_digits;
++        for (int64_t k = 0; k < num_digits; ++k) {
++          this_leaf_eq[k] = (this_pack_cmp[k] >> (j * 2 + 1)) & 1;
++          this_leaf_cmp[k] = (this_pack_cmp[k] >> (j * 2)) & 1;
++        }
++      }
++    }
++  }
++
++  auto boolean_t = makeType<BShrTy>(field, 1);
++  NdArrayRef prev_cmp =
++      ring_zeros(field, {static_cast<int64_t>(num_digits * num_cmp)})
++          .as(boolean_t);
++  NdArrayRef prev_eq =
++      ring_zeros(field, {static_cast<int64_t>(num_digits * num_cmp)})
++          .as(boolean_t);
++
++  DISPATCH_ALL_FIELDS(field, [&]() {
++    NdArrayView<ring2k_t> xprev_cmp(prev_cmp);
++    NdArrayView<ring2k_t> xprev_eq(prev_eq);
++    pforeach(0, xprev_cmp.numel(), [&](int64_t i) {
++      xprev_cmp[i] = leaf_cmp[i];
++      xprev_eq[i] = leaf_eq[i];
++    });
++  });
++
++  // Step 12 - 17. Evaluate the traversal AND
++  Shape oshape = inp.shape();
++  if (not is_sender_) {
++    oshape.insert(oshape.end(), batch_size);
++  }
++  return TraversalAND(prev_cmp, prev_eq, num_cmp, num_digits)
++      .as(boolean_t)
++      .reshape(oshape);
++}
++
+ NdArrayRef CompareProtocol::Compute(const NdArrayRef& inp, bool greater_than,
+                                     int64_t bitwidth) {
+   int64_t bw = SizeOf(inp.eltype().as<Ring2k>()->field()) * 8;
+@@ -457,4 +594,23 @@ std::array<NdArrayRef, 2> CompareProtocol::ComputeWithEq(const NdArrayRef& inp,
+   return {cmp, eq};
+ }
+
++NdArrayRef CompareProtocol::BatchCompute(const NdArrayRef& inp,
++                                         bool greater_than, int64_t numel,
++                                         int64_t bitwidth, int64_t batch_size) {
++  int64_t bw = SizeOf(inp.eltype().as<Ring2k>()->field()) * 8;
++  SPU_ENFORCE(bitwidth >= 0 && bitwidth <= bw, "bit_width={} out of bound",
++              bitwidth);
++  if (is_sender_) {
++    SPU_ENFORCE_EQ(inp.numel(), numel * batch_size);
++  } else {
++    SPU_ENFORCE_EQ(inp.numel(), numel);
++  }
++
++  if (bitwidth == 0) {
++    bitwidth = bw;
++  }
++
++  return DoBatchCompute(inp, greater_than, numel, bitwidth, batch_size);
++}
++
+ }  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/nonlinear/compare_prot.h b/libspu/mpc/cheetah/nonlinear/compare_prot.h
+index 7ffee7cb..39d3a897 100644
+--- a/libspu/mpc/cheetah/nonlinear/compare_prot.h
++++ b/libspu/mpc/cheetah/nonlinear/compare_prot.h
+@@ -45,17 +45,33 @@ class CompareProtocol {
+
+   ~CompareProtocol();
+
++  // The party rank that provides the choice bits in BatchCompute.
++  static constexpr int BatchedChoiceProvider() { return 1; }
++
+   NdArrayRef Compute(const NdArrayRef& inp, bool greater_than,
+                      int64_t bitwidth = 0);
+
+   std::array<NdArrayRef, 2> ComputeWithEq(const NdArrayRef& inp,
+                                           bool greater_than,
+                                           int64_t bitwidth = 0);
++  // Perform a batch compare where P0's input is a batch
++  // CMP(x1, y), CMP(x2, y), ..., CMP(xB, y)
++  // Output format:
++  // out[i][j] = CMP(x[i][j], y[i]) for i in [0, n) and j in [0, B)
++  //
++  // NOTE: output.shape = (inp.shape(), batch_size)
++  NdArrayRef BatchCompute(const NdArrayRef& inp, bool greater_than,
++                          int64_t numel, int64_t bitwidth,
++                          int64_t batch_size = 1);
+
+  private:
+   NdArrayRef DoCompute(const NdArrayRef& inp, bool greater_than,
+                        NdArrayRef* eq = nullptr, int64_t bitwidth = 0);
+
++  NdArrayRef DoBatchCompute(const NdArrayRef& inp, bool greater_than,
++                            int64_t numelt, int64_t bitwidth,
++                            int64_t batch_size);
++
+   NdArrayRef TraversalAND(NdArrayRef cmp, NdArrayRef eq, size_t num_input,
+                           size_t num_digits);
+
+diff --git a/libspu/mpc/cheetah/nonlinear/ring_ext_prot.cc b/libspu/mpc/cheetah/nonlinear/ring_ext_prot.cc
+new file mode 100644
+index 00000000..e42987db
+--- /dev/null
++++ b/libspu/mpc/cheetah/nonlinear/ring_ext_prot.cc
+@@ -0,0 +1,328 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/mpc/cheetah/nonlinear/ring_ext_prot.h"
++
++#include <memory>
++
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/parallel_utils.h"
++#include "libspu/core/prelude.h"
++#include "libspu/core/type.h"
++#include "libspu/core/type_util.h"
++#include "libspu/mpc/cheetah/nonlinear/compare_prot.h"
++#include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
++#include "libspu/mpc/cheetah/type.h"
++#include "libspu/mpc/utils/ring_ops.h"
++
++namespace spu::mpc::cheetah {
++
++namespace {
++template <typename T>
++auto makeMask(size_t bw) {
++  using U = typename std::make_unsigned<T>::type;
++  if (bw == sizeof(U) * 8) {
++    return static_cast<U>(-1);
++  }
++  return (static_cast<U>(1) << bw) - 1;
++}
++
++NdArrayRef CastTo(const NdArrayRef &x, FieldType from, FieldType to) {
++  SPU_ENFORCE_EQ(x.eltype().as<RingTy>()->field(), from);
++  // cast from src type to dst type
++  auto out = ring_zeros(to, x.shape());
++  DISPATCH_ALL_FIELDS(from /*, "cast_to"*/, [&]() {
++    using sT = ring2k_t;
++    NdArrayView<sT> src(x);
++
++    DISPATCH_ALL_FIELDS(to /*, "cast_to"*/, [&]() {
++      using dT = ring2k_t;
++      NdArrayView<dT> dst(out);
++      pforeach(0, src.numel(),
++               [&](int64_t i) { dst[i] = static_cast<dT>(src[i]); });
++    });
++  });
++  return out;
++}
++
++}  // namespace
++
++RingExtendProtocol::RingExtendProtocol(
++    const std::shared_ptr<BasicOTProtocols> &base)
++    : basic_ot_prot_(base) {}
++
++NdArrayRef RingExtendProtocol::UnsignedExtend(const NdArrayRef &inp,
++                                              const Meta &meta) {
++  SPU_ENFORCE(meta.src_width < meta.dst_width);
++  NdArrayRef wrap = ComputeWrap(inp, meta);
++
++  NdArrayRef out = ring_zeros(meta.dst_ring, inp.shape());
++
++  DISPATCH_ALL_FIELDS(meta.src_ring /*, "zext"*/, [&]() {
++    using sT = ring2k_t;
++    NdArrayView<const sT> input(inp);
++
++    DISPATCH_ALL_FIELDS(meta.dst_ring /*, "zext"*/, [&]() {
++      using dT = ring2k_t;
++      NdArrayView<const dT> w(wrap);
++      NdArrayView<dT> output(out);
++
++      auto shift = static_cast<dT>(1) << meta.src_width;
++      auto msk0 = (static_cast<dT>(1) << (meta.dst_width - meta.src_width)) - 1;
++      auto msk1 = makeMask<dT>(meta.dst_width);
++
++      pforeach(0, input.numel(), [&](int64_t i) {
++        output[i] = (static_cast<dT>(input[i]) - shift * (w[i] & msk0)) & msk1;
++      });
++    });
++  });
++
++  return out;
++}
++
++// Given msb(xA + xB mod 2^k) = 1, and xA, xB \in [0, 2^k)
++// To compute w = 1{xA + xB > 2^{k} - 1}.
++//            w = msb(xA) & msb(xB).
++// COT msg corr=msb(xA) on choice msb(xB)
++//    - msb(xB) = 0: get(-x, x) => 0
++//    - msb(xB) = 1: get(-x, x + msb(xA)) => msb(xA)
++NdArrayRef RingExtendProtocol::MSB1ToWrap(const NdArrayRef &inp,
++                                          const Meta &meta) {
++  const int64_t numel = inp.numel();
++  const int rank = basic_ot_prot_->Rank();
++  const size_t wrap_width = meta.dst_width - meta.src_width;
++
++  NdArrayRef cot_output = ring_zeros(meta.dst_ring, inp.shape());
++  DISPATCH_ALL_FIELDS(meta.src_ring /*, "MSB1ToWrap"*/, [&]() {
++    using sT = std::make_unsigned<ring2k_t>::type;
++    NdArrayView<const sT> xinp(inp);
++
++    DISPATCH_ALL_FIELDS(meta.dst_ring /*, "MSB1ToWrap"*/, [&]() {
++      using dT = std::make_unsigned<ring2k_t>::type;
++      auto xout = absl::MakeSpan(&cot_output.at<dT>(0), cot_output.numel());
++
++      if (rank == 0) {
++        std::vector<dT> cot_input(numel);
++        pforeach(0, numel, [&](int64_t i) {
++          cot_input[i] = ((xinp[i] >> (meta.src_width - 1)) & 1);
++        });
++
++        auto sender = basic_ot_prot_->GetSenderCOT();
++        sender->SendCAMCC(absl::MakeSpan(cot_input), xout, wrap_width);
++        sender->Flush();
++
++        auto msk = makeMask<dT>(meta.dst_width);
++        pforeach(0, numel, [&](int64_t i) { xout[i] = (-xout[i]) & msk; });
++      } else {
++        std::vector<uint8_t> cot_input(numel);
++        pforeach(0, numel, [&](int64_t i) {
++          cot_input[i] = ((xinp[i] >> (meta.src_width - 1)) & 1);
++        });
++
++        basic_ot_prot_->GetReceiverCOT()->RecvCAMCC(absl::MakeSpan(cot_input),
++                                                    xout, wrap_width);
++      }
++    });
++  });
++
++  return cot_output.as(makeType<BShrTy>(meta.dst_ring, 1));
++}
++
++NdArrayRef RingExtendProtocol::MSB0ToWrap(const NdArrayRef &inp,
++                                          const Meta &meta) {
++  const auto field = inp.eltype().as<Ring2k>()->field();
++  const int64_t numel = inp.numel();
++  const int rank = basic_ot_prot_->Rank();
++
++  constexpr size_t N = 2;  // 1-of-2 OT
++  constexpr size_t nbits = 1;
++
++  NdArrayRef wrap_bool;
++  if (0 == rank) {
++    wrap_bool = ring_randbit(meta.src_ring, inp.shape());
++    std::vector<uint8_t> send(numel * N);
++
++    DISPATCH_ALL_FIELDS(field /*, "MSB0_adjust"*/, [&]() {
++      using u2k = std::make_unsigned<ring2k_t>::type;
++      NdArrayView<const u2k> xinp(inp);
++      NdArrayView<const u2k> xrnd(wrap_bool);
++      // when msb(xA) = 0, set (r, 1^r)
++      //  ow. msb(xA) = 1, set (1^r, 1^r)
++      // Equals to (r^msb(xA), r^1)
++      for (int64_t i = 0; i < numel; ++i) {
++        send[2 * i + 0] = xrnd[i] ^ ((xinp[i] >> (meta.src_width - 1)) & 1);
++        send[2 * i + 1] = xrnd[i] ^ 1;
++      }
++    });
++
++    auto sender = basic_ot_prot_->GetSenderCOT();
++    sender->SendCMCC(absl::MakeSpan(send), N, nbits);
++    sender->Flush();
++  } else {
++    std::vector<uint8_t> choices(numel, 0);
++    DISPATCH_ALL_FIELDS(meta.src_ring /*, "MSB0_adjust"*/, [&]() {
++      using sT = std::make_unsigned<ring2k_t>::type;
++      NdArrayView<const sT> xinp(inp);
++      for (int64_t i = 0; i < numel; ++i) {
++        choices[i] = (xinp[i] >> (meta.src_width - 1)) & 1;
++      }
++
++      std::vector<uint8_t> recv(numel);
++      basic_ot_prot_->GetReceiverCOT()->RecvCMCC(absl::MakeSpan(choices), N,
++                                                 absl::MakeSpan(recv), nbits);
++
++      wrap_bool = ring_zeros(meta.src_ring, inp.shape());
++      NdArrayView<ring2k_t> xoup(wrap_bool);
++      pforeach(0, numel, [&](int64_t i) {
++        xoup[i] = static_cast<ring2k_t>(recv[i] & 1);
++      });
++    });
++  }
++
++  // cast from src type to dst type
++  NdArrayRef out = CastTo(wrap_bool, meta.src_ring, meta.dst_ring);
++
++  return basic_ot_prot_->B2ASingleBitWithSize(
++      out.as(makeType<BShrTy>(meta.dst_ring, 1)),
++      static_cast<int>(meta.dst_width - meta.src_width));
++}
++
++NdArrayRef RingExtendProtocol::Compute(const NdArrayRef &inp,
++                                       const Meta &meta) {
++  if (meta.use_heuristic) {
++    SPU_ENFORCE(meta.signed_arith, "use_heuristic=true need signed arith=true");
++  }
++  SPU_ENFORCE(meta.src_width < meta.dst_width);
++  SPU_ENFORCE(meta.src_width <= (int64_t)SizeOf(meta.src_ring) * 8,
++              "Now support input from the  defined ring only");
++  SPU_ENFORCE(meta.dst_width <= (int64_t)SizeOf(meta.dst_ring) * 8);
++
++  const int rank = basic_ot_prot_->Rank();
++
++  if (meta.signed_arith and meta.sign == SignType::Unknown and
++      meta.use_heuristic) {
++    // Use heuristic via adding a large positive value to make sure the input
++    // is also positive.
++    Meta _meta = meta;
++    _meta.use_heuristic = false;
++    _meta.sign = SignType::Positive;
++
++    if (rank == 0) {
++      NdArrayRef tmp = inp.clone();
++      DISPATCH_ALL_FIELDS(_meta.src_ring /*, "ext.adj"*/, [&]() {
++        NdArrayView<ring2k_t> tmp_inp(tmp);
++        ring2k_t big_val = static_cast<ring2k_t>(1)
++                           << (meta.src_width - kHeuristicBound);
++        auto msk = makeMask<ring2k_t>(meta.src_width);
++        pforeach(0, tmp.numel(),
++                 [&](int64_t i) { tmp_inp[i] = (tmp_inp[i] + big_val) & msk; });
++      });
++
++      tmp = Compute(tmp, _meta);
++
++      DISPATCH_ALL_FIELDS(_meta.dst_ring /*, "ext.adj"*/, [&]() {
++        NdArrayView<ring2k_t> outp(tmp);
++        ring2k_t big_val = static_cast<ring2k_t>(1)
++                           << (meta.src_width - kHeuristicBound);
++        auto msk = makeMask<ring2k_t>(meta.dst_width);
++        pforeach(0, outp.numel(),
++                 [&](int64_t i) { outp[i] = (outp[i] - big_val) & msk; });
++      });
++      return tmp;
++    } else {
++      // Nothing to do for rank=1
++      return Compute(inp, _meta);
++    }
++  }
++
++  Meta _meta = meta;
++
++  if (meta.signed_arith and meta.sign != SignType::Unknown) {
++    // flip sign when dogin signed arithmetic
++    // because SignedExt(x, k, k')  = UnsginedExt(x + 2^{k - 1} mod 2^k, k, k')
++    // - 2^{k - 1}
++    _meta.sign = meta.sign == SignType::Positive ? SignType::Negative
++                                                 : SignType::Positive;
++  }
++
++  NdArrayRef out = DISPATCH_ALL_FIELDS(meta.src_ring /*, "ext.zext"*/, [&]() {
++    using sT = ring2k_t;
++    NdArrayView<const sT> xinp(inp);
++
++    if (_meta.signed_arith and rank == 0) {
++      // Compute [x] + 2^{k - 1}
++      sT component = static_cast<sT>(1) << (meta.src_width - 1);
++      auto msk = makeMask<sT>(meta.src_width);
++      auto tmp = ring_zeros(meta.src_ring, inp.shape());
++      NdArrayView<sT> xtmp(tmp);
++      pforeach(0, tmp.numel(),
++               [&](int64_t i) { xtmp[i] = (xinp[i] + component) & msk; });
++      return UnsignedExtend(tmp, _meta);
++    } else {
++      return UnsignedExtend(inp, _meta);
++    }
++  });
++
++  if (_meta.signed_arith and rank == 0) {
++    DISPATCH_ALL_FIELDS(meta.dst_ring /*, "ext.zext.adj"*/, [&]() {
++      using dT = ring2k_t;
++      dT component = static_cast<dT>(1) << (meta.src_width - 1);
++      auto msk = makeMask<dT>(meta.dst_width);
++      NdArrayView<dT> xtmp(out);
++      pforeach(0, out.numel(),
++               [&](int64_t i) { xtmp[i] = (xtmp[i] - component) & msk; });
++    });
++  }
++
++  return out;
++}
++
++NdArrayRef RingExtendProtocol::ComputeWrap(const NdArrayRef &inp,
++                                           const Meta &meta) {
++  switch (meta.sign) {
++    case SignType::Positive:
++      return MSB0ToWrap(inp, meta);
++      break;
++    case SignType::Negative:
++      return MSB1ToWrap(inp, meta);
++      break;
++    default:
++      break;
++  }
++
++  CompareProtocol cmp_protocol(basic_ot_prot_);
++  NdArrayRef wrap_bool;
++  if (basic_ot_prot_->Rank() == 0) {
++    wrap_bool = cmp_protocol.Compute(inp, /*gt*/ true);
++  } else {
++    //     w = 1{x0 + x1 >= 2^k}
++    // <=> w = 1{x0 > 2^k - 1 - x1 mod 2^k}
++    // <=> w = 1{x0 > -x1 - 1 mod 2^k}
++    auto adjusted = ring_neg(inp);  // -x1 mod 2^k
++    DISPATCH_ALL_FIELDS(meta.src_ring /*, "wrap.adj"*/, [&]() {
++      NdArrayView<ring2k_t> xadj(adjusted);
++      // -1 mod 2^k
++      pforeach(0, xadj.numel(), [&](int64_t i) { xadj[i] -= 1; });
++    });
++
++    wrap_bool = cmp_protocol.Compute(adjusted, /*gt*/ true);
++  }
++
++  auto wrap = CastTo(wrap_bool, meta.src_ring, meta.dst_ring);
++  return basic_ot_prot_->B2ASingleBitWithSize(
++      wrap.as(makeType<BShrTy>(meta.dst_ring, 1)),
++      meta.dst_width - meta.src_width);
++}
++
++}  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/nonlinear/ring_ext_prot.h b/libspu/mpc/cheetah/nonlinear/ring_ext_prot.h
+new file mode 100644
+index 00000000..afa7fab2
+--- /dev/null
++++ b/libspu/mpc/cheetah/nonlinear/ring_ext_prot.h
+@@ -0,0 +1,68 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <memory>
++
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/type_util.h"
++
++namespace spu::mpc::cheetah {
++
++class BasicOTProtocols;
++
++// Given [x] the share in modulo 2^k, compute the share in modulo 2^k' such that
++// k' > k
++class RingExtendProtocol {
++ public:
++  static constexpr size_t kHeuristicBound = 2;
++
++  struct Meta {
++    SignType sign = SignType::Unknown;
++    // To add a heuristic large value to make sure the input is positive (i.e.,
++    // known sign)
++    bool use_heuristic = false;
++    // To view the MSB as sign bit
++    bool signed_arith = true;
++
++    FieldType src_ring;
++    FieldType dst_ring;
++
++    int64_t src_width;  // [0, 2^k)
++    int64_t dst_width;  // [0, 2^k')
++  };
++
++  explicit RingExtendProtocol(const std::shared_ptr<BasicOTProtocols> &base);
++
++  ~RingExtendProtocol() = default;
++
++  NdArrayRef Compute(const NdArrayRef &inp, const Meta &meta);
++
++ private:
++  // input is unsigned value
++  NdArrayRef UnsignedExtend(const NdArrayRef &inp, const Meta &meta);
++
++  NdArrayRef ComputeWrap(const NdArrayRef &inp, const Meta &meta);
++
++  // w = msbA | msbB
++  NdArrayRef MSB0ToWrap(const NdArrayRef &inp, const Meta &meta);
++
++  // w = msbA & msbB
++  NdArrayRef MSB1ToWrap(const NdArrayRef &inp, const Meta &meta);
++
++  std::shared_ptr<BasicOTProtocols> basic_ot_prot_ = nullptr;
++};
++
++}  // namespace spu::mpc::cheetah
+diff --git a/libspu/mpc/cheetah/nonlinear/ring_ext_prot_test.cc b/libspu/mpc/cheetah/nonlinear/ring_ext_prot_test.cc
+new file mode 100644
+index 00000000..5624dc81
+--- /dev/null
++++ b/libspu/mpc/cheetah/nonlinear/ring_ext_prot_test.cc
+@@ -0,0 +1,465 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/mpc/cheetah/nonlinear/ring_ext_prot.h"
++
++#include <type_traits>
++
++#include "gtest/gtest.h"
++
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/parallel_utils.h"
++#include "libspu/core/type_util.h"
++#include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
++#include "libspu/mpc/utils/ring_ops.h"
++#include "libspu/mpc/utils/simulate.h"
++
++namespace spu::mpc::cheetah {
++
++class RingExtendProtocolTest : public ::testing::TestWithParam<
++                                   std::tuple<FieldType, bool, std::string>> {
++ public:
++  static constexpr int64_t kBenchSize = 1LL << 10;
++  void SetUp() override {}
++};
++
++INSTANTIATE_TEST_SUITE_P(
++    Cheetah, RingExtendProtocolTest,
++    testing::Combine(testing::Values(FieldType::FM32, FieldType::FM64),
++                     testing::Values(true, false),
++                     testing::Values("Unknown", "Positive", "Negative")),
++    [](const testing::TestParamInfo<RingExtendProtocolTest::ParamType> &p) {
++      return fmt::format("{}{}MSB{}", std::get<0>(p.param),
++                         std::get<1>(p.param) ? "Signed" : "Unsigned",
++                         std::get<2>(p.param));
++    });
++
++template <typename T>
++bool SignBit(T x) {
++  using U = typename std::make_unsigned<T>::type;
++  return static_cast<U>(x) >> (8 * sizeof(T) - 1) & 1;
++}
++
++void MaskItInplace(NdArrayRef a, size_t width) {
++  auto field = a.eltype().as<Ring2k>()->field();
++  if (width == SizeOf(field) * 8) {
++    return;
++  }
++  DISPATCH_ALL_FIELDS(field /*, "mask"*/, [&]() {
++    NdArrayView<ring2k_t> _a(a);
++    ring2k_t msk = (static_cast<ring2k_t>(1) << width) - 1;
++    pforeach(0, _a.numel(), [&](int64_t i) { _a[i] &= msk; });
++  });
++}
++
++// view [0, 2^k) as [-2^k/2, 2^k/2)
++template <typename U>
++auto ToSignType(U x, size_t width) {
++  using S = typename std::make_signed<U>::type;
++  if (sizeof(U) * 8 == width) {
++    return static_cast<S>(x);
++  }
++
++  U half = static_cast<U>(1) << (width - 1);
++  if (x >= half) {
++    U upper = static_cast<U>(1) << width;
++    x -= upper;
++  }
++  return static_cast<S>(x);
++}
++
++TEST_P(RingExtendProtocolTest, Basic) {
++  size_t kWorldSize = 2;
++  Shape shape = {kBenchSize};
++
++  FieldType src_field = std::get<0>(GetParam());
++  FieldType dst_field;
++  if (src_field == FM32) {
++    dst_field = FM64;
++  } else {
++    dst_field = FM128;
++  }
++
++  bool signed_arith = std::get<1>(GetParam());
++  std::string sign_type_s = std::get<2>(GetParam());
++
++  SignType sign_type;
++  NdArrayRef inp[2];
++  inp[0] = ring_rand(src_field, shape);
++
++  if (sign_type_s == "Unknown") {
++    inp[1] = ring_rand(src_field, shape);
++    sign_type = SignType::Unknown;
++  } else {
++    auto msg = ring_rand(src_field, shape);
++    DISPATCH_ALL_FIELDS(src_field /*, "setup"*/, [&]() {
++      auto xmsg = NdArrayView<ring2k_t>(msg);
++      size_t bw = SizeOf(src_field) * 8;
++      if (sign_type_s == "Positive") {
++        auto msk = (static_cast<ring2k_t>(1) << (bw - 1)) - 1;
++        pforeach(0, xmsg.numel(), [&](int64_t i) { xmsg[i] &= msk; });
++        sign_type = SignType::Positive;
++      } else {
++        auto flag = static_cast<ring2k_t>(1) << (bw - 1);
++        pforeach(0, xmsg.numel(), [&](int64_t i) { xmsg[i] |= flag; });
++        sign_type = SignType::Negative;
++      }
++    });
++
++    inp[1] = ring_sub(msg, inp[0]);
++  }
++
++  NdArrayRef oup[2];
++  utils::simulate(kWorldSize, [&](std::shared_ptr<yacl::link::Context> ctx) {
++    int rank = ctx->Rank();
++    auto conn = std::make_shared<Communicator>(ctx);
++    auto base = std::make_shared<BasicOTProtocols>(
++        conn, CheetahOtKind::YACL_Softspoken);
++    RingExtendProtocol prot(base);
++    RingExtendProtocol::Meta meta;
++
++    meta.sign = sign_type;
++    meta.use_heuristic = false;
++    meta.signed_arith = signed_arith;
++    meta.src_ring = src_field;
++    meta.dst_ring = dst_field;
++    meta.src_width = SizeOf(src_field) * 8;
++    meta.dst_width = SizeOf(dst_field) * 8;
++
++    [[maybe_unused]] size_t b0 = ctx->GetStats()->sent_bytes;
++    oup[rank] = prot.Compute(inp[rank], meta);
++    [[maybe_unused]] size_t b1 = ctx->GetStats()->sent_bytes;
++    SPDLOG_DEBUG("Ext {} bits to {} bits sent {} bits per", meta.src_width,
++                 meta.dst_width, (b1 - b0) * 8. / shape.numel());
++  });
++
++  EXPECT_EQ(oup[0].shape(), oup[1].shape());
++  auto expected = ring_add(inp[0], inp[1]);
++  auto got = ring_add(oup[0], oup[1]);
++
++  DISPATCH_ALL_FIELDS(src_field /*, "check"*/, [&]() {
++    using U0 = std::make_unsigned<ring2k_t>::type;
++    using S0 = std::make_signed<ring2k_t>::type;
++    NdArrayView<U0> expU(expected);
++    NdArrayView<S0> expS(expected);
++    DISPATCH_ALL_FIELDS(dst_field /*, "check"*/, [&]() {
++      using U1 = std::make_unsigned<ring2k_t>::type;
++      using S1 = std::make_signed<ring2k_t>::type;
++
++      NdArrayView<U1> gotU(got);
++      NdArrayView<S1> gotS(got);
++      if (signed_arith) {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          ASSERT_EQ(static_cast<S1>(expS[i]), gotS[i]);
++        }
++      } else {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          ASSERT_EQ(expU[i], gotU[i]);
++        }
++      }
++    });
++  });
++}
++
++TEST_P(RingExtendProtocolTest, Heuristic) {
++  size_t kWorldSize = 2;
++  Shape shape = {kBenchSize};
++
++  FieldType src_field = std::get<0>(GetParam());
++  FieldType dst_field;
++  if (src_field == FM32) {
++    dst_field = FM64;
++  } else {
++    dst_field = FM128;
++  }
++
++  bool signed_arith = std::get<1>(GetParam());
++  std::string sign_type_s = std::get<2>(GetParam());
++
++  NdArrayRef inp[2];
++  inp[0] = ring_rand(src_field, shape);
++  if (sign_type_s != "Unknown" or not signed_arith) {
++    // 1. When sign type is already known, no need to use heuristic.
++    // 2. Heuristic is only for signed arith
++    return;
++  }
++
++  auto msg = ring_rand(src_field, shape);
++  ring_rshift_(msg, {(int64_t)RingExtendProtocol::kHeuristicBound});
++
++  DISPATCH_ALL_FIELDS(src_field /*, "setup"*/, [&]() {
++    auto xmsg = NdArrayView<ring2k_t>(msg);
++    // some are positive, some are negative
++    for (int64_t i = 0; i < shape.numel(); i += 2) {
++      xmsg[i] = -xmsg[i];
++    }
++  });
++
++  inp[1] = ring_sub(msg, inp[0]);
++
++  NdArrayRef oup[2];
++  utils::simulate(kWorldSize, [&](std::shared_ptr<yacl::link::Context> ctx) {
++    int rank = ctx->Rank();
++    auto conn = std::make_shared<Communicator>(ctx);
++    auto base = std::make_shared<BasicOTProtocols>(
++        conn, CheetahOtKind::YACL_Softspoken);
++    RingExtendProtocol prot(base);
++    RingExtendProtocol::Meta meta;
++
++    meta.sign = SignType::Unknown;
++    meta.use_heuristic = true;
++    meta.signed_arith = signed_arith;
++    meta.src_ring = src_field;
++    meta.dst_ring = dst_field;
++    meta.src_width = SizeOf(src_field) * 8;
++    meta.dst_width = SizeOf(dst_field) * 8;
++
++    [[maybe_unused]] size_t b0 = ctx->GetStats()->sent_bytes;
++    oup[rank] = prot.Compute(inp[rank], meta);
++    [[maybe_unused]] size_t b1 = ctx->GetStats()->sent_bytes;
++    SPDLOG_DEBUG("Heuristic Ext {} bits to {} bits sent {} bits per",
++                 meta.src_width, meta.dst_width,
++                 (b1 - b0) * 8. / shape.numel());
++  });
++
++  EXPECT_EQ(oup[0].shape(), oup[1].shape());
++  auto expected = ring_add(inp[0], inp[1]);
++  auto got = ring_add(oup[0], oup[1]);
++
++  DISPATCH_ALL_FIELDS(src_field /*, "check"*/, [&]() {
++    using U0 = std::make_unsigned<ring2k_t>::type;
++    using S0 = std::make_signed<ring2k_t>::type;
++    NdArrayView<U0> expU(expected);
++    NdArrayView<S0> expS(expected);
++    DISPATCH_ALL_FIELDS(dst_field /*, "check"*/, [&]() {
++      using U1 = std::make_unsigned<ring2k_t>::type;
++      using S1 = std::make_signed<ring2k_t>::type;
++
++      NdArrayView<U1> gotU(got);
++      NdArrayView<S1> gotS(got);
++      if (signed_arith) {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          EXPECT_EQ(static_cast<S1>(expS[i]), gotS[i]);
++        }
++      } else {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          ASSERT_EQ(expU[i], gotU[i]);
++        }
++      }
++    });
++  });
++}
++
++TEST_P(RingExtendProtocolTest, BasicWithSpecificOutWidth) {
++  size_t kWorldSize = 2;
++  Shape shape = {kBenchSize};
++
++  FieldType src_field = std::get<0>(GetParam());
++  FieldType dst_field;
++  if (src_field == FM32) {
++    dst_field = FM64;
++  } else {
++    dst_field = FM128;
++  }
++
++  bool signed_arith = std::get<1>(GetParam());
++  std::string sign_type_s = std::get<2>(GetParam());
++
++  SignType sign_type;
++  NdArrayRef inp[2];
++  inp[0] = ring_rand(src_field, shape);
++
++  if (sign_type_s == "Unknown") {
++    inp[1] = ring_rand(src_field, shape);
++    sign_type = SignType::Unknown;
++  } else {
++    auto msg = ring_rand(src_field, shape);
++    DISPATCH_ALL_FIELDS(src_field /*, "setup"*/, [&]() {
++      auto xmsg = NdArrayView<ring2k_t>(msg);
++      size_t bw = SizeOf(src_field) * 8;
++      if (sign_type_s == "Positive") {
++        auto msk = (static_cast<ring2k_t>(1) << (bw - 1)) - 1;
++        pforeach(0, xmsg.numel(), [&](int64_t i) { xmsg[i] &= msk; });
++        sign_type = SignType::Positive;
++      } else {
++        auto flag = static_cast<ring2k_t>(1) << (bw - 1);
++        pforeach(0, xmsg.numel(), [&](int64_t i) { xmsg[i] |= flag; });
++        sign_type = SignType::Negative;
++      }
++    });
++
++    inp[1] = ring_sub(msg, inp[0]);
++  }
++
++  constexpr size_t kExtWidth = 20;
++  size_t src_width;
++  size_t dst_width;
++  NdArrayRef oup[2];
++  utils::simulate(kWorldSize, [&](std::shared_ptr<yacl::link::Context> ctx) {
++    int rank = ctx->Rank();
++    auto conn = std::make_shared<Communicator>(ctx);
++    auto base = std::make_shared<BasicOTProtocols>(
++        conn, CheetahOtKind::YACL_Softspoken);
++    RingExtendProtocol prot(base);
++    RingExtendProtocol::Meta meta;
++
++    meta.sign = sign_type;
++    meta.use_heuristic = false;
++    meta.signed_arith = signed_arith;
++    meta.src_ring = src_field;
++    meta.dst_ring = dst_field;
++    // NOTE(lwj): only support field size for the src ring
++    meta.src_width = SizeOf(src_field) * 8;
++    meta.dst_width = meta.src_width + kExtWidth;
++
++    [[maybe_unused]] size_t b0 = ctx->GetStats()->sent_bytes;
++    oup[rank] = prot.Compute(inp[rank], meta);
++    [[maybe_unused]] size_t b1 = ctx->GetStats()->sent_bytes;
++    SPDLOG_DEBUG("Ext {} bits to {} bits sent {} bits per", meta.src_width,
++                 meta.dst_width, (b1 - b0) * 8. / shape.numel());
++
++    src_width = meta.src_width;
++    dst_width = meta.dst_width;
++  });
++
++  EXPECT_EQ(oup[0].shape(), oup[1].shape());
++  auto expected = ring_add(inp[0], inp[1]);
++  auto got = ring_add(oup[0], oup[1]);
++  MaskItInplace(expected, src_width);
++  MaskItInplace(got, dst_width);
++
++  DISPATCH_ALL_FIELDS(src_field /*, "check"*/, [&]() {
++    using U0 = std::make_unsigned<ring2k_t>::type;
++    using S0 = std::make_signed<ring2k_t>::type;
++    NdArrayView<U0> expU(expected);
++    NdArrayView<S0> expS(expected);
++    DISPATCH_ALL_FIELDS(dst_field /*, "check"*/, [&]() {
++      using U1 = std::make_unsigned<ring2k_t>::type;
++      using S1 = std::make_signed<ring2k_t>::type;
++
++      NdArrayView<U1> gotU(got);
++      NdArrayView<S1> gotS(got);
++      if (signed_arith) {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          EXPECT_EQ(ToSignType(expS[i], src_width),
++                    ToSignType(gotS[i], dst_width));
++        }
++      } else {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          ASSERT_EQ(expU[i], gotU[i]);
++        }
++      }
++    });
++  });
++}
++
++TEST_P(RingExtendProtocolTest, HeuristicWithSpecificOutWidth) {
++  size_t kWorldSize = 2;
++  Shape shape = {kBenchSize};
++
++  FieldType src_field = std::get<0>(GetParam());
++  FieldType dst_field;
++  if (src_field == FM32) {
++    dst_field = FM64;
++  } else {
++    dst_field = FM128;
++  }
++
++  bool signed_arith = std::get<1>(GetParam());
++  std::string sign_type_s = std::get<2>(GetParam());
++
++  NdArrayRef inp[2];
++  inp[0] = ring_rand(src_field, shape);
++  if (sign_type_s != "Unknown" or not signed_arith) {
++    // 1. When sign type is already known, no need to use heuristic.
++    // 2. Heuristic is only for signed arith
++    return;
++  }
++
++  auto msg = ring_rand(src_field, shape);
++  ring_rshift_(msg, {(int64_t)RingExtendProtocol::kHeuristicBound});
++
++  DISPATCH_ALL_FIELDS(src_field /*, "setup"*/, [&]() {
++    auto xmsg = NdArrayView<ring2k_t>(msg);
++    // some are positive, some are negative
++    for (int64_t i = 0; i < shape.numel(); i += 2) {
++      xmsg[i] = -xmsg[i];
++    }
++  });
++
++  inp[1] = ring_sub(msg, inp[0]);
++
++  NdArrayRef oup[2];
++  constexpr size_t kExtWidth = 20;
++  size_t src_width;
++  size_t dst_width;
++  utils::simulate(kWorldSize, [&](std::shared_ptr<yacl::link::Context> ctx) {
++    int rank = ctx->Rank();
++    auto conn = std::make_shared<Communicator>(ctx);
++    auto base = std::make_shared<BasicOTProtocols>(
++        conn, CheetahOtKind::YACL_Softspoken);
++    RingExtendProtocol prot(base);
++    RingExtendProtocol::Meta meta;
++
++    meta.sign = SignType::Unknown;
++    meta.use_heuristic = true;
++    meta.signed_arith = signed_arith;
++    meta.src_ring = src_field;
++    meta.dst_ring = dst_field;
++    meta.src_width = SizeOf(src_field) * 8;
++    meta.dst_width = meta.src_width + kExtWidth;
++
++    [[maybe_unused]] size_t b0 = ctx->GetStats()->sent_bytes;
++    oup[rank] = prot.Compute(inp[rank], meta);
++    [[maybe_unused]] size_t b1 = ctx->GetStats()->sent_bytes;
++    SPDLOG_DEBUG("Heuristic Ext {} bits to {} bits sent {} bits per",
++                 meta.src_width, meta.dst_width,
++                 (b1 - b0) * 8. / shape.numel());
++
++    src_width = meta.src_width;
++    dst_width = meta.dst_width;
++  });
++
++  EXPECT_EQ(oup[0].shape(), oup[1].shape());
++  auto expected = ring_add(inp[0], inp[1]);
++  auto got = ring_add(oup[0], oup[1]);
++  MaskItInplace(expected, src_width);
++  MaskItInplace(got, dst_width);
++
++  DISPATCH_ALL_FIELDS(src_field /*, "check"*/, [&]() {
++    using U0 = std::make_unsigned<ring2k_t>::type;
++    using S0 = std::make_signed<ring2k_t>::type;
++    NdArrayView<U0> expU(expected);
++    NdArrayView<S0> expS(expected);
++    DISPATCH_ALL_FIELDS(dst_field /*, "check"*/, [&]() {
++      using U1 = std::make_unsigned<ring2k_t>::type;
++      using S1 = std::make_signed<ring2k_t>::type;
++
++      NdArrayView<U1> gotU(got);
++      NdArrayView<S1> gotS(got);
++      if (signed_arith) {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          EXPECT_EQ(ToSignType(expS[i], src_width),
++                    ToSignType(gotS[i], dst_width));
++        }
++      } else {
++        for (int64_t i = 0; i < shape.numel(); ++i) {
++          ASSERT_EQ(expU[i], gotU[i]);
++        }
++      }
++    });
++  });
++}
++
++}  // namespace spu::mpc::cheetah
+\ No newline at end of file
+diff --git a/libspu/mpc/cheetah/ot/basic_ot_prot.cc b/libspu/mpc/cheetah/ot/basic_ot_prot.cc
+index 34d05a1c..67acf84a 100644
+--- a/libspu/mpc/cheetah/ot/basic_ot_prot.cc
++++ b/libspu/mpc/cheetah/ot/basic_ot_prot.cc
+@@ -462,6 +462,67 @@ NdArrayRef BasicOTProtocols::Multiplexer(const NdArrayRef &msg,
+   });
+ }
+
++NdArrayRef BasicOTProtocols::Multiplexer_gf2(const NdArrayRef &msg,
++                                             const NdArrayRef &select) {
++  SPU_ENFORCE_EQ(msg.shape(), select.shape());
++  const auto *shareType = select.eltype().as<BShrTy>();
++  SPU_ENFORCE_EQ(shareType->nbits(), 1UL);
++
++  const auto field = msg.eltype().as<Ring2k>()->field();
++  const int64_t size = msg.numel();
++
++  auto _corr_data = ring_zeros(field, msg.shape());
++
++  auto _send_msg0 = ring_zeros(field, msg.shape());
++  auto _send_msg1 = ring_zeros(field, msg.shape());
++  auto _recv = ring_zeros(field, msg.shape());
++  std::vector<uint8_t> sel(size);
++  // Compute (x0 ^ x1) * (b0 ^ b1)
++  // Also ( (x0 ^ x1 ) * b0 ) ^ ( (x0 ^ x1) * b1 )
++  return DISPATCH_ALL_FIELDS(field, [&]() {
++    NdArrayView<const ring2k_t> _msg(msg);
++    NdArrayView<const ring2k_t> _sel(select);
++    auto corr_data = absl::MakeSpan(&_corr_data.at<ring2k_t>(0), size);
++    auto send_msg0 = absl::MakeSpan(&_send_msg0.at<ring2k_t>(0), size);
++    auto send_msg1 = absl::MakeSpan(&_send_msg1.at<ring2k_t>(0), size);
++    auto recv = absl::MakeSpan(&_recv.at<ring2k_t>(0), size);
++
++    pforeach(0, size, [&](int64_t i) {
++      sel[i] = static_cast<uint8_t>(_sel[i] & 1);
++      corr_data[i] = _msg[i];
++    });
++
++    if (Rank() == 0) {
++      ferret_sender_->SendRMCC(send_msg0, send_msg1);
++      ferret_sender_->Flush();
++      ferret_receiver_->RecvRMCC(absl::MakeSpan(sel), recv);
++      ring_xor_(_send_msg1, _send_msg0);
++      ring_xor_(_send_msg1, _corr_data);
++      conn_->sendAsync(conn_->nextRank(), _send_msg1, "Multiplexer_gf2");
++      auto delta = conn_->recv(conn_->nextRank(), _send_msg1.eltype(),
++                               "Multiplexer_gf2");
++      ring_xor_(_corr_data, delta);
++    } else {
++      ferret_receiver_->RecvRMCC(absl::MakeSpan(sel), recv);
++      ferret_sender_->SendRMCC(send_msg0, send_msg1);
++      ferret_sender_->Flush();
++      ring_xor_(_send_msg1, _send_msg0);
++      ring_xor_(_send_msg1, _corr_data);
++      auto delta = conn_->recv(conn_->nextRank(), _send_msg1.eltype(),
++                               "Multiplexer_gf2");
++      conn_->sendAsync(conn_->nextRank(), _send_msg1, "Multiplexer_gf2");
++      ring_xor_(_corr_data, delta);
++    }
++
++    pforeach(0, size, [&](int64_t i) {
++      recv[i] =
++          corr_data[i] * static_cast<ring2k_t>(sel[i]) ^ send_msg0[i] ^ recv[i];
++    });
++
++    return _recv;
++  });
++}
++
+ NdArrayRef BasicOTProtocols::PrivateMulxRecv(const NdArrayRef &msg,
+                                              const NdArrayRef &select) {
+   SPU_ENFORCE_EQ(msg.shape(), select.shape());
+diff --git a/libspu/mpc/cheetah/ot/basic_ot_prot.h b/libspu/mpc/cheetah/ot/basic_ot_prot.h
+index 90ee661c..0da75e69 100644
+--- a/libspu/mpc/cheetah/ot/basic_ot_prot.h
++++ b/libspu/mpc/cheetah/ot/basic_ot_prot.h
+@@ -42,6 +42,8 @@ class BasicOTProtocols {
+   // msg * select for select \in {0, 1}
+   NdArrayRef Multiplexer(const NdArrayRef &msg, const NdArrayRef &select);
+
++  NdArrayRef Multiplexer_gf2(const NdArrayRef &msg, const NdArrayRef &select);
++
+   // multiplexer with private choices (sender part)
+   NdArrayRef PrivateMulxSend(const NdArrayRef &msg);
+
+diff --git a/libspu/mpc/cheetah/protocol.cc b/libspu/mpc/cheetah/protocol.cc
+index 407e6ca2..88e8022a 100644
+--- a/libspu/mpc/cheetah/protocol.cc
++++ b/libspu/mpc/cheetah/protocol.cc
+@@ -67,7 +67,7 @@ void regCheetahProtocol(SPUContext* ctx,
+                   cheetah::AddAP, cheetah::AddAA,                           //
+                   cheetah::MulAP, cheetah::MulAA, cheetah::MulAV,           //
+                   cheetah::SquareA,                                         //
+-                  cheetah::MulA1B, cheetah::MulA1BV,                        //
++                  cheetah::MulA1B, cheetah::MulB1B, cheetah::MulA1BV,       //
+                   cheetah::EqualAA, cheetah::EqualAP,                       //
+                   cheetah::MatMulAP, cheetah::MatMulAA, cheetah::MatMulAV,  //
+                   cheetah::MatMulVVS,                                       //
+diff --git a/libspu/mpc/cheetah/state.cc b/libspu/mpc/cheetah/state.cc
+index dded2f5f..91da7bb5 100644
+--- a/libspu/mpc/cheetah/state.cc
++++ b/libspu/mpc/cheetah/state.cc
+@@ -26,7 +26,7 @@ namespace spu::mpc::cheetah {
+ namespace {
+ // Return num_workers for the given size of jobs
+ size_t InitOTState(KernelEvalContext* ctx, size_t njobs) {
+-  constexpr size_t kMinWorkSize = 2048;
++  constexpr size_t kMinWorkSize = 4194304;
+   if (njobs == 0) {
+     return 0;
+   }
+diff --git a/libspu/mpc/cheetah/state.h b/libspu/mpc/cheetah/state.h
+index 0ee3e575..6713613b 100644
+--- a/libspu/mpc/cheetah/state.h
++++ b/libspu/mpc/cheetah/state.h
+@@ -118,7 +118,7 @@ class CheetahOTState : public State {
+
+   mutable std::mutex lock_;
+
+-  static constexpr size_t kMaxOTParallel = 48;
++  static constexpr size_t kMaxOTParallel = 16;
+
+   size_t maximum_instances_ = 0;
+   std::vector<ProtPtr> basic_ot_prot_;
+diff --git a/libspu/mpc/cheetah/tiled_dispatch.cc b/libspu/mpc/cheetah/tiled_dispatch.cc
+new file mode 100644
+index 00000000..3ce873c7
+--- /dev/null
++++ b/libspu/mpc/cheetah/tiled_dispatch.cc
+@@ -0,0 +1,379 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/mpc/cheetah/tiled_dispatch.h"
++
++#include <future>
++
++#include "libspu/mpc/cheetah/state.h"
++
++namespace spu::mpc::cheetah {
++
++namespace {
++// Return num_workers for the given size of jobs
++size_t InitOTState(KernelEvalContext* ctx, size_t njobs) {
++  constexpr size_t kMinWorkSize = 2048;
++  if (njobs == 0) {
++    return 0;
++  }
++  auto* comm = ctx->getState<Communicator>();
++  auto* ot_state = ctx->getState<CheetahOTState>();
++  size_t nworker =
++      std::min(ot_state->maximum_instances(), CeilDiv(njobs, kMinWorkSize));
++  for (size_t w = 0; w < nworker; ++w) {
++    ot_state->LazyInit(comm, w);
++  }
++  return nworker;
++}
++}  // namespace
++
++NdArrayRef DispatchUnaryFunc(KernelEvalContext* ctx, const NdArrayRef& x,
++                             OTUnaryFunc func) {
++  const Shape& shape = x.shape();
++  SPU_ENFORCE(shape.numel() > 0);
++  // (lazy) init OT
++  int64_t numel = x.numel();
++  int64_t nworker = InitOTState(ctx, numel);
++  int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++
++  if (shape.ndim() != 1) {
++    // TiledDispatchOTFunc over flatten input
++    return DispatchUnaryFunc(ctx, x.reshape({numel}), func).reshape(x.shape());
++  }
++
++  std::vector<NdArrayRef> outs(nworker);
++  std::vector<std::future<void>> futures;
++
++  int64_t slice_end = 0;
++  for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++    int64_t slice_bgn = wi * workload;
++    slice_end = std::min(numel, slice_bgn + workload);
++    auto slice_input = x.slice({slice_bgn}, {slice_end}, {});
++    futures.emplace_back(std::async(
++        [&](int64_t idx, const NdArrayRef& input) {
++          auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++          outs[idx] = func(input, ot_instance);
++        },
++        wi, slice_input));
++  }
++
++  auto slice_input = x.slice({slice_end}, {numel}, {1});
++  auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++  outs[nworker - 1] = func(slice_input, ot_instance);
++
++  for (auto&& f : futures) {
++    f.get();
++  }
++
++  NdArrayRef out(outs[0].eltype(), x.shape());
++  int64_t offset = 0;
++
++  for (auto& out_slice : outs) {
++    std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++                out_slice.numel() * out.elsize());
++    offset += out_slice.numel() * out.elsize();
++  }
++
++  return out;
++}
++
++NdArrayRef DispatchBinaryFunc(KernelEvalContext* ctx, const NdArrayRef& x,
++                              const NdArrayRef& y, OTBinaryFunc func) {
++  const Shape& shape = x.shape();
++  SPU_ENFORCE(shape.numel() > 0);
++  SPU_ENFORCE_EQ(shape, y.shape());
++  // (lazy) init OT
++  int64_t numel = x.numel();
++  int64_t nworker = InitOTState(ctx, numel);
++  int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++
++  if (shape.ndim() != 1) {
++    // TiledDispatchOTFunc over flatten input
++    return DispatchBinaryFunc(ctx, x.reshape({numel}), y.reshape({numel}), func)
++        .reshape(x.shape());
++  }
++
++  std::vector<NdArrayRef> outs(nworker);
++  std::vector<std::future<void>> futures;
++
++  int64_t slice_end = 0;
++  for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++    int64_t slice_bgn = wi * workload;
++    slice_end = std::min(numel, slice_bgn + workload);
++    auto x_slice = x.slice({slice_bgn}, {slice_end}, {1});
++    auto y_slice = y.slice({slice_bgn}, {slice_end}, {1});
++    futures.emplace_back(std::async(
++        [&](int64_t idx, const NdArrayRef& inp0, const NdArrayRef& inp1) {
++          auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++          outs[idx] = func(inp0, inp1, ot_instance);
++        },
++        wi, x_slice, y_slice));
++  }
++
++  auto x_slice = x.slice({slice_end}, {numel}, {});
++  auto y_slice = y.slice({slice_end}, {numel}, {});
++  auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++  outs[nworker - 1] = func(x_slice, y_slice, ot_instance);
++
++  for (auto&& f : futures) {
++    f.get();
++  }
++
++  NdArrayRef out(outs[0].eltype(), x.shape());
++  int64_t offset = 0;
++
++  for (auto& out_slice : outs) {
++    std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++                out_slice.numel() * out.elsize());
++    offset += out_slice.numel() * out.elsize();
++  }
++
++  return out;
++}
++
++NdArrayRef DispatchUnaryFuncWithBatchedInput(KernelEvalContext* ctx,
++                                             const NdArrayRef& x,
++                                             bool is_batcher,
++                                             int64_t batch_size,
++                                             OTUnaryFunc func) {
++  Shape shape = x.shape();
++  // (lazy) init OT
++  int64_t numel = shape.numel();
++
++  if (is_batcher) {
++    SPU_ENFORCE(numel % batch_size == 0);
++    numel /= batch_size;
++  }
++
++  int64_t nworker = InitOTState(ctx, numel);
++  int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++
++  if (shape.ndim() != 1) {
++    Shape oshape = x.shape();
++    if (not is_batcher) {
++      oshape.insert(oshape.end(), batch_size);
++    }
++    return DispatchUnaryFuncWithBatchedInput(ctx, x.reshape({x.numel()}),
++                                             is_batcher, batch_size, func)
++        .reshape(oshape);
++  }
++
++  std::vector<NdArrayRef> outs(nworker);
++  std::vector<std::future<void>> futures;
++
++  int64_t eidx = 0;
++  for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++    int64_t sidx = wi * workload;
++    eidx = std::min(numel, sidx + workload);
++    if (is_batcher) {
++      sidx *= batch_size;
++      eidx *= batch_size;
++    }
++    auto x_slice = x.slice({sidx}, {eidx}, {});
++    futures.emplace_back(std::async(
++        [&](int64_t idx, const NdArrayRef& input0) {
++          auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++          outs[idx] = func(input0, ot_instance);
++        },
++        wi, x_slice));
++  }
++  auto x_slice = x.slice({eidx}, {x.numel()}, {});
++  auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++  outs[nworker - 1] = func(x_slice, ot_instance);
++
++  for (auto&& f : futures) {
++    f.get();
++  }
++
++  // check size
++  int64_t sum = 0;
++  for (auto& out_slice : outs) {
++    sum += out_slice.numel();
++  }
++  SPU_ENFORCE_EQ(sum, numel * batch_size);
++
++  Shape oshape = {numel * batch_size};
++
++  NdArrayRef out(outs[0].eltype(), oshape);
++  int64_t offset = 0;
++  for (auto& out_slice : outs) {
++    std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++                out_slice.numel() * out.elsize());
++    offset += out_slice.numel() * out.elsize();
++  }
++
++  return out;
++}
++
++NdArrayRef DispatchBinaryFuncWithBatchedInput(KernelEvalContext* ctx,
++                                              const NdArrayRef& x,
++                                              const NdArrayRef& y,
++                                              OTBinaryFunc func) {
++  Shape shape = x.shape();
++  SPU_ENFORCE_EQ(shape.ndim() + 1, y.shape().ndim());
++  for (int64_t d = 0; d < shape.ndim(); ++d) {
++    SPU_ENFORCE_EQ(shape[d], y.shape()[d]);
++  }
++
++  // (lazy) init OT
++  int64_t numel = x.numel();
++  int64_t nworker = InitOTState(ctx, numel);
++  int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++  int64_t batch_size = y.shape().back();
++  if (shape.ndim() != 1) {
++    return DispatchBinaryFuncWithBatchedInput(
++               ctx, x.reshape({numel}), y.reshape({batch_size * numel}), func)
++        .reshape(y.shape());
++  }
++
++  std::vector<NdArrayRef> outs(nworker);
++  std::vector<std::future<void>> futures;
++
++  int64_t eidx = 0;
++  for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++    int64_t sidx = wi * workload;
++    eidx = std::min(numel, sidx + workload);
++    auto x_slice = x.slice({sidx}, {eidx}, {});
++    auto y_slice = y.slice({batch_size * sidx}, {batch_size * eidx}, {});
++
++    futures.emplace_back(std::async(
++        [&](int64_t idx, const NdArrayRef& input0, const NdArrayRef& input1) {
++          auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++          outs[idx] = func(input0, input1, ot_instance);
++        },
++        wi, x_slice, y_slice));
++  }
++
++  auto x_slice = x.slice({eidx}, {numel}, {});
++  auto y_slice = y.slice({batch_size * eidx}, {batch_size * numel}, {});
++  auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++  outs[nworker - 1] = func(x_slice, y_slice, ot_instance);
++
++  for (auto&& f : futures) {
++    f.get();
++  }
++
++  NdArrayRef out(outs[0].eltype(), y.shape());
++  int64_t offset = 0;
++  for (auto& out_slice : outs) {
++    std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++                out_slice.numel() * out.elsize());
++    offset += out_slice.numel() * out.elsize();
++  }
++
++  return out;
++}
++
++// NdArrayRef TiledDispatchOTFunc(KernelEvalContext* ctx,
++//                                absl::Span<const uint8_t> x,
++//                                OTUnaryFuncWithU8 func) {
++//   SPU_ENFORCE(not x.empty());
++//   // (lazy) init OT
++//   int64_t numel = x.size();
++//   int64_t nworker = InitOTState(ctx, numel);
++//   int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++
++//   std::vector<NdArrayRef> outs(nworker);
++//   std::vector<std::future<void>> futures;
++
++//   int64_t slice_end = 0;
++//   for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++//     int64_t slice_bgn = wi * workload;
++//     slice_end = std::min(numel, slice_bgn + workload);
++//     auto slice_input = x.subspan(slice_bgn, slice_end - slice_bgn);
++//     futures.emplace_back(std::async(
++//         [&](int64_t idx, absl::Span<const uint8_t> input) {
++//           auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++//           outs[idx] = func(input, ot_instance);
++//         },
++//         wi, slice_input));
++//   }
++
++//   auto slice_input = x.subspan(slice_end, numel - slice_end);
++//   auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++//   outs[nworker - 1] = func(slice_input, ot_instance);
++
++//   for (auto&& f : futures) {
++//     f.get();
++//   }
++
++//   NdArrayRef out(outs[0].eltype(), {numel});
++//   int64_t offset = 0;
++
++//   for (auto& out_slice : outs) {
++//     std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++//                 out_slice.numel() * out.elsize());
++//     offset += out_slice.numel() * out.elsize();
++//   }
++
++//   return out;
++// }
++
++// NdArrayRef TiledDispatchOTFunc(KernelEvalContext* ctx, const NdArrayRef& x,
++//                                absl::Span<const uint8_t> y,
++//                                OTBinaryFuncWithU8 func) {
++//   const Shape& shape = x.shape();
++//   SPU_ENFORCE(shape.numel() > 0);
++//   SPU_ENFORCE_EQ(shape.numel(), (int64_t)y.size());
++//   // (lazy) init OT
++//   int64_t numel = x.numel();
++//   int64_t nworker = InitOTState(ctx, numel);
++//   int64_t workload = nworker == 0 ? 0 : CeilDiv(numel, nworker);
++
++//   if (shape.ndim() != 1) {
++//     // TiledDispatchOTFunc over flatten input
++//     return TiledDispatchOTFunc(ctx, x.reshape({numel}), y, func)
++//         .reshape(x.shape());
++//   }
++
++//   std::vector<NdArrayRef> outs(nworker);
++//   std::vector<std::future<void>> futures;
++
++//   int64_t slice_end = 0;
++//   for (int64_t wi = 0; wi + 1 < nworker; ++wi) {
++//     int64_t slice_bgn = wi * workload;
++//     slice_end = std::min(numel, slice_bgn + workload);
++//     auto x_slice = x.slice({slice_bgn}, {slice_end}, {1});
++//     auto y_slice = y.subspan(slice_bgn, slice_end - slice_bgn);
++//     futures.emplace_back(std::async(
++//         [&](int64_t idx, const NdArrayRef& inp0,
++//             absl::Span<const uint8_t> inp1) {
++//           auto ot_instance = ctx->getState<CheetahOTState>()->get(idx);
++//           outs[idx] = func(inp0, inp1, ot_instance);
++//         },
++//         wi, x_slice, y_slice));
++//   }
++
++//   auto x_slice = x.slice({slice_end}, {numel}, {});
++//   auto y_slice = y.subspan(slice_end, numel - slice_end);
++//   auto ot_instance = ctx->getState<CheetahOTState>()->get(nworker - 1);
++//   outs[nworker - 1] = func(x_slice, y_slice, ot_instance);
++
++//   for (auto&& f : futures) {
++//     f.get();
++//   }
++
++//   NdArrayRef out(outs[0].eltype(), x.shape());
++//   int64_t offset = 0;
++
++//   for (auto& out_slice : outs) {
++//     std::memcpy(out.data<std::byte>() + offset, out_slice.data(),
++//                 out_slice.numel() * out.elsize());
++//     offset += out_slice.numel() * out.elsize();
++//   }
++
++//   return out;
++// }
++
++}  // namespace spu::mpc::cheetah
+\ No newline at end of file
+diff --git a/libspu/mpc/cheetah/tiled_dispatch.h b/libspu/mpc/cheetah/tiled_dispatch.h
+new file mode 100644
+index 00000000..b362f081
+--- /dev/null
++++ b/libspu/mpc/cheetah/tiled_dispatch.h
+@@ -0,0 +1,58 @@
++// Copyright 2024 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//   http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <memory>
++#include <mutex>
++
++#include "libspu/core/context.h"
++#include "libspu/core/ndarray_ref.h"
++#include "libspu/core/object.h"
++#include "libspu/mpc/cheetah/ot/basic_ot_prot.h"
++
++namespace spu::mpc::cheetah {
++
++using OTUnaryFunc = std::function<NdArrayRef(
++    const NdArrayRef& sub, const std::shared_ptr<BasicOTProtocols>& ot)>;
++
++using OTBinaryFunc =
++    std::function<NdArrayRef(const NdArrayRef& op0, const NdArrayRef& op1,
++                             const std::shared_ptr<BasicOTProtocols>& ot)>;
++
++using OTUnaryFuncWithU8 = std::function<NdArrayRef(
++    absl::Span<const uint8_t> op, const std::shared_ptr<BasicOTProtocols>& ot)>;
++
++using OTBinaryFuncWithU8 = std::function<NdArrayRef(
++    const NdArrayRef& op0, absl::Span<const uint8_t> op1,
++    const std::shared_ptr<BasicOTProtocols>& ot)>;
++
++NdArrayRef DispatchUnaryFunc(KernelEvalContext* ctx, const NdArrayRef& x,
++                             OTUnaryFunc func);
++
++NdArrayRef DispatchBinaryFunc(KernelEvalContext* ctx, const NdArrayRef& x,
++                              const NdArrayRef& y, OTBinaryFunc func);
++
++NdArrayRef DispatchUnaryFuncWithBatchedInput(KernelEvalContext* ctx,
++                                             const NdArrayRef& input,
++                                             bool is_batcher,
++                                             int64_t batch_size,
++                                             OTUnaryFunc func);
++
++NdArrayRef DispatchBinaryFuncWithBatchedInput(KernelEvalContext* ctx,
++                                              const NdArrayRef& input,
++                                              const NdArrayRef& batched_input,
++                                              OTBinaryFunc func);
++
++}  // namespace spu::mpc::cheetah
+\ No newline at end of file
+diff --git a/libspu/mpc/utils/simulate.h b/libspu/mpc/utils/simulate.h
+index f1b76bee..e05eb620 100644
+--- a/libspu/mpc/utils/simulate.h
++++ b/libspu/mpc/utils/simulate.h
+@@ -61,7 +61,8 @@ template <typename Fn, typename... Args,
+               Fn, const std::shared_ptr<yacl::link::Context>&, Args...>,
+           std::enable_if_t<std::is_same_v<R, void>, int> = 0>
+ void simulate(size_t npc, Fn&& fn, Args&&... args) {
+-  auto lctxs = yacl::link::test::SetupWorld(fmt::format("sim.{}", npc), npc);
++  auto lctxs =
++      yacl::link::test::SetupBrpcWorld(fmt::format("sim.{}", npc), npc);
+
+   std::vector<std::future<void>> futures;
+   for (size_t rank = 0; rank < npc; rank++) {
+diff --git a/libspu/device/executor.h b/libspu/device/executor.h
+index 11ea4c41..f236617a 100644
+--- a/libspu/device/executor.h
++++ b/libspu/device/executor.h
+@@ -14,8 +14,10 @@
+ #pragma once
+
+ #include <functional>
++#include <optional>
+ #include <shared_mutex>
++#include <vector>
+
+ #include "llvm/ADT/DenseMap.h"
+ #include "mlir/IR/Value.h"
+@@ -68,8 +70,10 @@ class OpExecutor {
+  public:
+   virtual ~OpExecutor() = default;
+
+-  using handler_t = std::function<bool(SPUContext *sctx, mlir::Operation *op,
+-                                       absl::Span<const Value> inputs)>;
++  using handler_result_t = std::optional<std::vector<Value>>;
++  using handler_t =
++      std::function<handler_result_t(SPUContext *sctx, mlir::Operation *op,
++                                     absl::Span<const Value> inputs)>;
+
+   //
+   virtual void checkType(mlir::Type mlir_type, const spu::Value &v) const = 0;
+diff --git a/libspu/device/pphlo/pphlo_executor.cc b/libspu/device/pphlo/pphlo_executor.cc
+index 18003144..e7cbe842 100644
+--- a/libspu/device/pphlo/pphlo_executor.cc
++++ b/libspu/device/pphlo/pphlo_executor.cc
+@@ -370,17 +370,45 @@ void execute(OpExecutor *, SPUContext *sctx, SymbolScope *sscope,
+   auto lhs = lookupValue(sscope, op.getLhs(), opts);
+   auto rhs = lookupValue(sscope, op.getRhs(), opts);
+-  SPU_ENFORCE(lhs.shape().ndim() == 3 && rhs.shape().ndim() == 3);
+-
+-  SPU_ENFORCE(dnum.getLhsContractingDimensions().size() == 1 &&
+-                  dnum.getRhsContractingDimensions().size() == 1 &&
+-                  dnum.getLhsBatchingDimensions()[0] == 0 &&
+-                  dnum.getLhsContractingDimensions()[0] == 2,
++  const auto lhs_batching = dnum.getLhsBatchingDimensions();
++  const auto rhs_batching = dnum.getRhsBatchingDimensions();
++  const auto lhs_contracting = dnum.getLhsContractingDimensions();
++  const auto rhs_contracting = dnum.getRhsContractingDimensions();
++  SPU_ENFORCE(lhs_batching.size() == rhs_batching.size(),
++              "Batching dimensions must have the same size");
++  SPU_ENFORCE(lhs_contracting.size() == 1 && rhs_contracting.size() == 1,
++              "DotGeneral requires one contracting dimension");
++
++  auto ret_type =
++      mlir::dyn_cast<mlir::RankedTensorType>(op.getResult().getType());
++  if (lhs_batching.empty()) {
++    SPU_ENFORCE(lhs_contracting[0] == 1 && rhs_contracting[0] == 0,
++                "Rank-2 contracting dimensions must be [1] x [0]");
++    auto squeeze_storage_dimension = [&](Value value) {
++      if (value.shape().ndim() == 2) {
++        return value;
++      }
++      SPU_ENFORCE(value.shape().ndim() == 3 && value.shape()[2] == 1,
++                  "Non-batched DotGeneral requires a rank-2 matrix or a "
++                  "rank-3 matrix with a trailing storage dimension");
++      return kernel::hlo::Reshape(
++          sctx, value, Shape{value.shape()[0], value.shape()[1]});
++    };
++    lhs = squeeze_storage_dimension(std::move(lhs));
++    rhs = squeeze_storage_dimension(std::move(rhs));
++    auto ret = kernel::hlo::Reshape(
++        sctx, kernel::hlo::Dot(sctx, lhs, rhs), ret_type.getShape());
++    addValue(sscope, op.getResult(), std::move(ret), opts);
++    return;
++  }
++
++  SPU_ENFORCE(lhs.shape().ndim() == 3 && rhs.shape().ndim() == 3);
++  SPU_ENFORCE(lhs_batching.size() == 1 && lhs_batching[0] == 0 &&
++                  rhs_batching[0] == 0 && lhs_contracting[0] == 2 &&
++                  rhs_contracting[0] == 1,
+               "LHS dims is not in order");
+-
++
+   // Must be [b,m,k] * [b, k, n]
+   SPU_ENFORCE(lhs.shape()[0] == rhs.shape()[0], "Batch dim should equal");
+-  auto ret_type =
+-      mlir::dyn_cast<mlir::RankedTensorType>(op.getResult().getType());
+   auto ret = kernel::hlo::Reshape(sctx, kernel::hlo::DotGeneral(sctx, lhs, rhs),
+                                   ret_type.getShape());
+-
++
+@@ -1125,13 +1125,25 @@ void execute(OpExecutor *executor, SPUContext *sctx, SymbolScope *sscope,
+   }
+
+   const auto &extra = executor->getExtraIntrinsicHandler();
+-  if (extra.has_value() && (*extra)(sctx, op.getOperation(), inputs)) {
+-    return;
++  if (extra.has_value()) {
++    auto extra_ret = (*extra)(sctx, op.getOperation(), inputs);
++    if (extra_ret.has_value()) {
++      SPU_ENFORCE(extra_ret->size() == op->getNumResults(),
++                  "Extra intrinsic handler returned {} values for {} results",
++                  extra_ret->size(), op->getNumResults());
++      for (size_t idx = 0; idx < op->getNumResults(); ++idx) {
++        addValue(sscope, op->getResult(idx), std::move((*extra_ret)[idx]), opt);
++      }
++      return;
++    }
+   }
+
+   auto ret = intrinsic_dispatcher(sctx, op, inputs);
++  SPU_ENFORCE(ret.size() == op->getNumResults(),
++              "Intrinsic dispatcher returned {} values for {} results",
++              ret.size(), op->getNumResults());
+
+   for (size_t idx = 0; idx < op->getNumResults(); ++idx) {
+     addValue(sscope, op->getResult(idx), std::move(ret[idx]), opt);
+   }
+ }
+diff --git a/libspu/compiler/tools/spu-translate.cc b/libspu/compiler/tools/spu-translate.cc
+index 087eb94b..1e5c49a2 100644
+--- a/libspu/compiler/tools/spu-translate.cc
++++ b/libspu/compiler/tools/spu-translate.cc
+@@ -82,8 +82,9 @@ void isEqual(const xt::xarray<T> &lhs, const xt::xarray<T> &rhs) {
+   }
+ }
+
+-bool testOpHandler(::spu::SPUContext *sctx, mlir::Operation *op,
+-                   absl::Span<const ::spu::Value> inputs) {
++::spu::device::OpExecutor::handler_result_t testOpHandler(
++    ::spu::SPUContext *sctx, mlir::Operation *op,
++    absl::Span<const ::spu::Value> inputs) {
+   auto callOp = mlir::dyn_cast<spu::pphlo::CustomCallOp>(op);
+   if (callOp.getCallTargetName() == "expect_almost_eq") {
+     ::spu::Value runtimeLhs = inputs[0];
+@@ -117,7 +118,7 @@ bool testOpHandler(::spu::SPUContext *sctx, mlir::Operation *op,
+       }
+     }
+
+-    return true;
++    return std::vector<::spu::Value>{};
+   }
+
+   if (callOp.getCallTargetName() == "expect_eq") {
+@@ -210,10 +211,10 @@ bool testOpHandler(::spu::SPUContext *sctx, mlir::Operation *op,
+       break;
+     }
+     }
+
+-    return true;
++    return std::vector<::spu::Value>{};
+   }
+
+-  return false;
++  return std::nullopt;
+ }
+
+ void evalModule(ModuleOp module) {
+diff --git a/libspu/dialect/pphlo/IR/type_inference.cc b/libspu/dialect/pphlo/IR/type_inference.cc
+index 0780144a..c2ab4b67 100644
+--- a/libspu/dialect/pphlo/IR/type_inference.cc
++++ b/libspu/dialect/pphlo/IR/type_inference.cc
+@@ -21,12 +21,16 @@ namespace {
+
+ llvm::SmallVector<int64_t> inferShape(
+-    llvm::SmallVector<llvm::ArrayRef<int64_t>> shapes) {
++    const llvm::SmallVector<llvm::ArrayRef<int64_t>>& shapes) {
++  if (shapes.empty()) {
++    return {};
++  }
++  const auto shape = shapes.front();
+   for (size_t idx = 1; idx < shapes.size(); ++idx) {
+-    if (shapes[idx] != shapes[0]) {
++    if (shapes[idx] != shape) {
+       (void)emitOptionalError(std::nullopt, "Shape mismatch");
+     }
+   }
+-  return {shapes[0].begin(), shapes[0].end()};
++  return {shape.begin(), shape.end()};
+ }
+
+ Type inferElementType(llvm::SmallVector<Type> types) {
+diff --git a/libspu/compiler/BUILD.bazel b/libspu/compiler/BUILD.bazel
+index 0044081a..5879031b 100644
+--- a/libspu/compiler/BUILD.bazel
++++ b/libspu/compiler/BUILD.bazel
+@@ -29,3 +29,20 @@ spu_cc_library(
+         "//libspu/compiler/front_end:fe",
+     ],
+ )
++
++spu_cc_library(
++    name = "compile_stablehlo",
++    srcs = ["compile_stablehlo.cc"],
++    hdrs = ["compile_stablehlo.h"],
++    deps = [
++        "//libspu/compiler/codegen",
++        "//libspu/compiler/common:compilation_context",
++        "//libspu/compiler/core",
++        "//libspu/compiler/utils",
++        "//libspu/dialect/pphlo/IR:dialect",
++        "//libspu/dialect/pphlo/transforms:all_passes",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:Parser",
++        "@stablehlo//:stablehlo_ops",
++    ],
++)
+diff --git a/libspu/compiler/compile_stablehlo.h b/libspu/compiler/compile_stablehlo.h
+new file mode 100644
+index 00000000..d97f5350
+--- /dev/null
++++ b/libspu/compiler/compile_stablehlo.h
+@@ -0,0 +1,30 @@
++// Copyright 2026 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <string>
++#include <string_view>
++#include <vector>
++
++#include "libspu/spu.pb.h"
++
++namespace spu::compiler {
++
++std::string compileStablehloOnly(
++    std::string_view stablehlo,
++    const std::vector<Visibility>& input_visibility,
++    const CompilerOptions& copts);
++
++}  // namespace spu::compiler
+diff --git a/libspu/compiler/compile_stablehlo.cc b/libspu/compiler/compile_stablehlo.cc
+new file mode 100644
+index 00000000..1eb71a90
+--- /dev/null
++++ b/libspu/compiler/compile_stablehlo.cc
+@@ -0,0 +1,78 @@
++// Copyright 2026 Ant Group Co., Ltd.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "libspu/compiler/compile_stablehlo.h"
++
++#include <utility>
++
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/Parser/Parser.h"
++#include "mlir/Pass/Pass.h"
++#include "mlir/Pass/PassManager.h"
++#include "stablehlo/dialect/StablehloOps.h"
++
++#include "libspu/compiler/codegen/codegen.h"
++#include "libspu/compiler/common/compilation_context.h"
++#include "libspu/compiler/core/core.h"
++#include "libspu/compiler/utils/utils.h"
++#include "libspu/core/prelude.h"
++#include "libspu/dialect/pphlo/IR/dialect.h"
++#include "libspu/dialect/pphlo/transforms/passes.h"
++
++namespace spu::compiler {
++
++std::string compileStablehloOnly(
++    std::string_view stablehlo,
++    const std::vector<Visibility>& input_visibility,
++    const CompilerOptions& copts) {
++  CompilationContext context(copts);
++  auto* mlir_context = context.getMLIRContext();
++  mlir_context->loadDialect<mlir::spu::pphlo::PPHloDialect,
++                            mlir::stablehlo::StablehloDialect,
++                            mlir::func::FuncDialect>();
++
++  auto module = mlir::parseSourceString<mlir::ModuleOp>(
++      std::string(stablehlo), mlir_context);
++  SPU_ENFORCE(module, "MLIR parser failure");
++
++  std::string input_vis_args = "input_vis_list=";
++  for (size_t index = 0; index < input_visibility.size(); ++index) {
++    if (index != 0) {
++      input_vis_args.append(",");
++    }
++    input_vis_args.append(Visibility_Name(input_visibility[index]));
++  }
++
++  mlir::PassManager frontend(mlir_context);
++  auto legalize = mlir::spu::pphlo::createLegalizeToPPHloPass();
++  SPU_ENFORCE(
++      legalize
++          ->initializeOptions(input_vis_args,
++                              mlir::spu::argparser_error_handler)
++          .succeeded(),
++      "Failed to initialize StableHLO visibility options");
++  frontend.addPass(std::move(legalize));
++  frontend.nest<mlir::func::FuncOp>().addPass(
++      mlir::spu::pphlo::createLowerConversionCastPass());
++  context.setupPrettyPrintConfigurations(&frontend);
++  SPU_ENFORCE(frontend.run(module.get()).succeeded(),
++              "Failed to legalize StableHLO to PPHLO");
++
++  Core core(&context);
++  core.doit(module.get());
++  return CodeGen::doit(module.get());
++}
++
++}  // namespace spu::compiler

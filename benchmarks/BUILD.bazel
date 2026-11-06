@@ -1,0 +1,45 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_binary(
+    name = "capricorn_bench",
+    srcs = ["capricorn_bench.cc"],
+    deps = [
+        "//src/capricorn:routing",
+        "//src/capricorn:expert_compute",
+        "//src/common/moe:combine",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:macro",
+        "//src/common/runtime:prot_helper",
+        "//src/common/runtime:prot_interface",
+        "@abseil-cpp//absl/debugging:failure_signal_handler",
+        "@abseil-cpp//absl/debugging:symbolize",
+        "@spdlog",
+        "@yacl//yacl/crypto/rand",
+        "//src/capricorn/activation:secure_silu",
+        "@abseil-cpp//absl/strings",
+        "@fmt",
+    ],
+)
+
+capricorn_cc_binary(
+    name = "cryptomoe_bench",
+    srcs = ["cryptomoe_bench.cc"],
+    deps = [
+        "//src/common/moe:combine",
+        "//src/baselines/cryptomoe:dispatch",
+        "//src/common/moe:expert_compute_spu",
+        "//src/common/moe:token_topk",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:macro",
+        "//src/common/runtime:prot_helper",
+        "//src/common/runtime:prot_interface",
+        "@abseil-cpp//absl/debugging:failure_signal_handler",
+        "@abseil-cpp//absl/debugging:symbolize",
+        "@spdlog",
+        "@yacl//yacl/crypto/rand",
+        "@abseil-cpp//absl/strings",
+        "@fmt",
+    ],
+)

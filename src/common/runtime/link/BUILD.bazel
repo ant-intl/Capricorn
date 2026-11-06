@@ -1,0 +1,50 @@
+# Copyright 2026 Ant International, Ant Group. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("//bazel:capricorn.bzl", "capricorn_cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "communicator",
+    hdrs = ["communicator.h"],
+    deps = [
+        "@abseil-cpp//absl/types:span",
+        "@yacl//yacl/base:buffer",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_library(
+    name = "link_io",
+    hdrs = ["link_io.h"],
+    deps = [
+        ":communicator",
+        "@abseil-cpp//absl/strings",
+        "@emp-tool//:emp-tool",
+    ],
+)
+
+capricorn_cc_library(
+    name = "mock_link_io",
+    hdrs = ["mock_link_io.h"],
+    deps = [
+        ":communicator",
+        ":link_io",
+        "//src/common/runtime:test_utils",
+        "@abseil-cpp//absl/strings",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:thread_pool",
+    ],
+)

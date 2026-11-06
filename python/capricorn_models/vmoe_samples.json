@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "samples": [
+    {
+      "id": "tensorflow_yellow_labrador",
+      "file_name": "yellow_labrador.jpg",
+      "source_url": "https://storage.googleapis.com/download.tensorflow.org/example_images/YellowLabradorLooking_new.jpg",
+      "source_page": "https://www.tensorflow.org/tutorials/load_data/images",
+      "sha256": "d4cb12ea8a768582562e1f1c0c930ea6fc4757f5b66551b986b41498efd75ca1",
+      "bytes": 83281,
+      "media_type": "image/jpeg",
+      "decoded_size": [700, 577],
+      "expected_imagenet_class_index": 208,
+      "expected_imagenet_synset": "n02099712",
+      "expected_label": "Labrador retriever",
+      "annotation_note": "The descriptive label follows the TensorFlow example image name; this is a reproducible inference sample, not an ImageNet validation annotation."
+    }
+  ]
+}

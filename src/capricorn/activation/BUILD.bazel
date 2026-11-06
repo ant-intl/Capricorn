@@ -1,0 +1,71 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "secure_silu",
+    srcs = ["secure_silu.cc"],
+    hdrs = ["secure_silu.h"],
+    deps = [
+        "//src/common/runtime:macro",
+        "//src/common/mpc:and_protocol",
+        "//src/common/mpc:b2a",
+        "//src/common/mpc:bole_context",
+        "//src/common/mpc:compare",
+        "//src/common/mpc:elementwise",
+        "//src/common/mpc:lookup_table",
+        "//src/common/mpc:mux",
+        "//src/common/mpc:preprocess",
+        "//src/common/mpc:ring_extension",
+        "//src/common/mpc:rot_context",
+        "//src/common/mpc:truncate",
+        "//src/common/runtime/link:link_io",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "secure_silu_test",
+    srcs = ["secure_silu_test.cc"],
+    deps = [
+        ":secure_silu",
+        "//src/common/runtime:macro",
+        "//src/common/mpc:elementwise",
+        "//src/common/mpc:preprocess",
+        "//src/common/runtime/link:mock_link_io",
+        "@emp-tool",
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_library(
+    name = "lut_silu_spu",
+    srcs = ["lut_silu_spu.cc"],
+    hdrs = ["lut_silu_spu.h"],
+    deps = [
+        ":secure_silu",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:value",
+        "@spulib//libspu/core:encoding",
+        "@spulib//libspu/core:ndarray_ref",
+        "@spulib//libspu/core:prelude",
+        "@spulib//libspu/core:type_util",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "lut_silu_spu_test",
+    srcs = ["lut_silu_spu_test.cc"],
+    deps = [
+        ":lut_silu_spu",
+        ":secure_silu",
+        "//src/common/nn:test_support",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/crypto/rand",
+    ],
+)

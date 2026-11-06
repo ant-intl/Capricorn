@@ -1,0 +1,66 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "softmax",
+    srcs = ["softmax.cc"],
+    hdrs = ["softmax.h"],
+    deps = [
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:value",
+        "@spulib//libspu/kernel/hal:polymorphic",
+        "@spulib//libspu/kernel/hal:shape_ops",
+        "@spulib//libspu/kernel/hlo:basic_binary",
+        "@spulib//libspu/kernel/hlo:basic_unary",
+        "@spulib//libspu/kernel/hlo:reduce",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+capricorn_cc_library(
+    name = "spu_activation",
+    srcs = ["spu_activation.cc"],
+    hdrs = ["spu_activation.h"],
+    deps = [
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:value",
+        "@spulib//libspu/kernel/hal/intrinsic/nn:activation",
+    ],
+)
+
+capricorn_cc_library(
+    name = "test_support",
+    hdrs = ["test_support.h"],
+    testonly = True,
+    deps = ["@yacl//yacl/link"],
+)
+
+capricorn_cc_test_with_main(
+    name = "softmax_test",
+    srcs = ["softmax_test.cc"],
+    deps = [
+        ":softmax",
+        ":test_support",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/crypto/rand",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "spu_activation_test",
+    srcs = ["spu_activation_test.cc"],
+    deps = [
+        ":spu_activation",
+        "//src/common/runtime:macro",
+        ":test_support",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/crypto/rand",
+    ],
+)

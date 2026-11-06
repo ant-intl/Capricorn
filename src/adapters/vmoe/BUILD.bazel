@@ -1,0 +1,255 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_binary", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "@yacl//yacl/link",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "metrics_test",
+    srcs = [
+        "metrics_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":metrics",
+    ],
+)
+
+capricorn_cc_library(
+    name = "config",
+    hdrs = ["config.h"],
+    deps = [
+        "//src/capricorn:routing",
+        "//src/capricorn:expert_compute",
+        "//src/common/moe:combine",
+        "//src/baselines/cryptomoe:dispatch",
+        "//src/common/moe:expert_compute_spu",
+        "//src/common/moe:token_topk",
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_library(
+    name = "sparse_moe_block",
+    srcs = ["sparse_moe_block.cc"],
+    hdrs = ["sparse_moe_block.h"],
+    deps = [
+        ":config",
+        ":metrics",
+        "//src/common/moe:combine",
+        "//src/baselines/cryptomoe:dispatch",
+        "//src/common/moe:expert_compute_spu",
+        "//src/common/moe:token_topk",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:value",
+        "@spulib//libspu/kernel/hal:shape_ops",
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_library(
+    name = "expert_choice_moe_block",
+    srcs = ["expert_choice_moe_block.cc"],
+    hdrs = ["expert_choice_moe_block.h"],
+    deps = [
+        ":config",
+        ":metrics",
+        "//src/capricorn:routing",
+        "//src/capricorn:expert_compute",
+        "//src/common/moe:combine",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:value",
+        "@spulib//libspu/kernel/hal:shape_ops",
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "config_test",
+    srcs = [
+        "config_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":config",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "kernel_api_test",
+    srcs = [
+        "kernel_api_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        "//src/common/moe:combine",
+        "//src/baselines/cryptomoe:dispatch",
+        "//src/common/moe:expert_compute_spu",
+        "//src/common/moe:token_topk",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "sparse_moe_block_test",
+    srcs = [
+        "sparse_moe_block_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":sparse_moe_block",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "expert_choice_moe_block_test",
+    srcs = [
+        "expert_choice_moe_block_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":expert_choice_moe_block",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "//src/capricorn/activation:secure_silu",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "intrinsic_handler_test",
+    srcs = [
+        "intrinsic_handler_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":expert_choice_moe_block",
+        ":intrinsic_handler",
+        ":sparse_moe_block",
+        "@spulib//libspu/device:executor",
+    ],
+)
+
+capricorn_cc_library(
+    name = "intrinsic_handler",
+    srcs = ["intrinsic_handler.cc"],
+    hdrs = ["intrinsic_handler.h"],
+    deps = [
+        "//src/baselines/cryptomoe:dispatch",
+        ":expert_choice_moe_block",
+        ":metrics",
+        ":sparse_moe_block",
+        "@spulib//libspu/device:executor",
+        "@spulib//libspu/dialect/pphlo/IR:dialect",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_library(
+    name = "pphlo_runner",
+    srcs = ["pphlo_runner.cc"],
+    hdrs = ["pphlo_runner.h"],
+    deps = [
+        ":intrinsic_handler",
+        "//src/capricorn/activation:secure_silu",
+        "@spulib//libspu/compiler:compile_stablehlo",
+        "@spulib//libspu/device:api",
+        "@spulib//libspu/device:executor",
+        "@spulib//libspu/device:symbol_table",
+        "@spulib//libspu/device/pphlo:pphlo_executor",
+        "@spulib//libspu/dialect/pphlo/IR:dialect",
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "pphlo_runner_test",
+    srcs = [
+        "pphlo_runner_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":pphlo_runner",
+    ],
+)
+
+capricorn_cc_library(
+    name = "inference_artifact",
+    srcs = ["inference_artifact.cc"],
+    hdrs = ["inference_artifact.h"],
+    deps = [
+        "@yacl//yacl/base:exception",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "inference_artifact_test",
+    srcs = [
+        "inference_artifact_test.cc",
+        "test_main.cc",
+    ],
+    deps = [
+        ":inference_artifact",
+    ],
+)
+
+capricorn_cc_binary(
+    name = "pphlo_runner_main",
+    srcs = ["pphlo_runner_main.cc"],
+    deps = [
+        ":inference_artifact",
+        ":metrics",
+        ":pphlo_runner",
+        "//src/common/runtime:environment",
+        "@abseil-cpp//absl/strings",
+        "@nlohmann_json//:json",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/link:factory",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "vmoe_single_block_e2e_test",
+    size = "enormous",
+    srcs = [
+        "test_main.cc",
+        "vmoe_single_block_e2e_test.cc",
+    ],
+    tags = ["manual"],
+    deps = [
+        ":pphlo_runner",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "expert_choice_single_block_e2e_test",
+    size = "enormous",
+    srcs = [
+        "expert_choice_single_block_e2e_test.cc",
+        "test_main.cc",
+    ],
+    tags = ["manual"],
+    deps = [
+        ":pphlo_runner",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+    ],
+)

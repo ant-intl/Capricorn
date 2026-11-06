@@ -1,0 +1,104 @@
+# devtools
+.eclipse/
+.idea/
+*.plist
+clion/
+*.swp
+tags
+sftp-config.json
+build_cmakelist.py
+.akconfig
+.vscode/
+.cloudide/
+*.code-workspace
+vipclient-*
+*.pb.h
+*.pb.cc
+compile_commands.json
+.clangd
+Pipfile
+
+# python-package
+/dist
+*.egg-info
+__pycache__
+build
+_build
+
+# bazel
+bazel-*
+
+# cmake related
+abseil-cpp
+bld
+bld.install
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+
+# mixed
+.DS_Store
+.ipynb_checkpoints
+trace.*log
+
+dump/
+
+# clangd cache
+.cache
+external
+
+#brpc
+rpc_data
+
+MODULE.bazel.lock
+
+### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor
+# The external link: Differs on Windows vs macOS/Linux, so we can't check it in. The pattern needs to not have a trailing / because it's a symlink on macOS/Linux.
+/external
+# Bazel output symlinks: Same reasoning as /external. You need the * because people can change the name of the directory your repository is cloned into, changing the bazel-<workspace_name> symlink.
+/bazel-*
+# Compiled output -> don't check in
+/compile_commands.json
+# Directory where clangd puts its indexing work
+/.cache/
+
+#distdir
+distdir/*
+
+#bench data
+*.data
+*.txt
+*.jsonl
+/script/*.png
+/script/*.pdf
+/bin/*
+*.pdf
+*.png
+*.log
+/logs/*
+
+# Plaintext evaluation artifacts are generated locally and can be large.
+/plaintext/exms/
+/plaintext/routing_fidelity_results.json*
+
+# Keep vendored src directories ignored; track the reorganized project sources.
+src/
+!/src/
+.claude
+_bmad/
+_bmad-output/
+
+# Model weights
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.npy
+/checkpoint
+/tokenizer_config.json
+
+# Local Python/runtime artifacts
+/.venv/
+/.wheels/
+/results/

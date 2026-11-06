@@ -1,0 +1,84 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "macro",
+    hdrs = ["macro.h"],
+)
+
+capricorn_cc_library(
+    name = "test_utils",
+    hdrs = ["test_utils.h"],
+    deps = [
+        "@yacl//yacl/link",
+        "@yacl//yacl/crypto/rand",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "test_utils_test",
+    srcs = ["test_utils_test.cc"],
+    deps = [
+        ":test_utils",
+    ],
+)
+
+capricorn_cc_library(
+    name = "environment",
+    srcs = ["environment.cc"],
+    hdrs = ["environment.h"],
+    deps = [
+        "@spulib//libspu/core:config",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:half",
+        "@spulib//libspu/core:prelude",
+        "@spulib//libspu/core:pt_buffer_view",
+        "@spulib//libspu/core:type_util",
+        "@spulib//libspu/device:io",
+        "@spulib//libspu/device:symbol_table",
+        "@spulib//libspu/kernel/hal:constants",
+        "@spulib//libspu/kernel/hal:prot_wrapper",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@spulib//libspu/kernel/hlo:basic_binary",
+        "@spulib//libspu/kernel/hlo:basic_unary",
+        "@spulib//libspu/kernel/hlo:casting",
+        "@spulib//libspu/kernel/hlo:const",
+        "@spulib//libspu/kernel/hlo:geometrical",
+        "@spulib//libspu/kernel/hlo:indexing",
+        "@spulib//libspu/mpc:factory",
+        "@yacl//yacl/base:buffer",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/rand",
+        "@yacl//yacl/crypto/tools:crhash",
+        "@yacl//yacl/crypto/tools:rp",
+        "@yacl//yacl/utils:serializer",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "environment_test",
+    srcs = ["environment_test.cc"],
+    deps = [
+        ":environment",
+        ":test_utils",
+    ],
+)
+
+capricorn_cc_library(
+    name = "prot_interface",
+    hdrs = ["prot_interface.h"],
+    deps = [
+        ":environment",
+    ],
+)
+
+capricorn_cc_library(
+    name = "prot_helper",
+    hdrs = ["prot_helper.h"],
+    deps = [
+        ":environment",
+        ":prot_interface",
+    ],
+)

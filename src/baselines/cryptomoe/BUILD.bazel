@@ -1,0 +1,56 @@
+load("//bazel:capricorn.bzl", "capricorn_cc_library", "capricorn_cc_test_with_main")
+
+package(default_visibility = ["//visibility:public"])
+
+capricorn_cc_library(
+    name = "dispatch",
+    srcs = ["dispatch.cc"],
+    hdrs = ["dispatch.h"],
+    deps = [
+        "//src/common/runtime:environment",
+        "//src/common/runtime:macro",
+        "//src/common/runtime:prot_helper",
+        "//src/common/runtime:prot_interface",
+        "//src/common/selection:customized_sort",
+        "@spulib//libspu/core:config",
+        "@spulib//libspu/core:context",
+        "@spulib//libspu/core:half",
+        "@spulib//libspu/core:prelude",
+        "@spulib//libspu/core:type_util",
+        "@spulib//libspu/device:io",
+        "@spulib//libspu/device:symbol_table",
+        "@spulib//libspu/kernel/hal:constants",
+        "@spulib//libspu/kernel/hal:polymorphic",
+        "@spulib//libspu/kernel/hal/intrinsic/nn:activation",
+        "@spulib//libspu/kernel/hal:prot_wrapper",
+        "@spulib//libspu/kernel/hal:public_helper",
+        "@spulib//libspu/kernel/hal:shape_ops",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@spulib//libspu/kernel/hlo:basic_binary",
+        "@spulib//libspu/kernel/hlo:basic_unary",
+        "@spulib//libspu/kernel/hlo:casting",
+        "@spulib//libspu/kernel/hlo:const",
+        "@spulib//libspu/kernel/hlo:geometrical",
+        "@spulib//libspu/kernel/hlo:indexing",
+        "@spulib//libspu/kernel/hlo:rank",
+        "@spulib//libspu/mpc:factory",
+        "@yacl//yacl/base:buffer",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/rand",
+        "@yacl//yacl/crypto/tools:crhash",
+        "@yacl//yacl/crypto/tools:rp",
+        "@yacl//yacl/utils:serializer",
+    ],
+)
+
+capricorn_cc_test_with_main(
+    name = "dispatch_test",
+    srcs = ["dispatch_test.cc"],
+    deps = [
+        ":dispatch",
+        "//src/common/runtime:environment",
+        "//src/common/runtime:test_utils",
+        "@spulib//libspu/kernel/hal:type_cast",
+        "@yacl//yacl/crypto/rand",
+    ],
+)
