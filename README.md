@@ -75,6 +75,25 @@ Model weights, datasets, generated artifacts, results, logs, and COT caches must
 
 ### 1. Obtain the Source and Build
 
+From the repository root, run `make help` to discover development commands,
+benchmarks, V-MoE inference, and plaintext evaluation. Running `make` alone
+also only prints help. Model checkpoints, datasets, and V-MoE artifacts still
+need to be prepared explicitly as described below.
+
+```bash
+make cot_init  # Optional: prepare the two-party ROT smoke-test cache
+make test      # Runs the lightweight ROT target, not the full test suite
+make build     # Builds the five experiment targets listed below
+```
+
+`make test` checks the private local `.cache/cot-smoke-v1/` cache and generates
+a fresh complete set if the files are missing or the checksums fail. It does
+not require a shell `COT_DATA_DIR` setting or touch the persistent experiment
+cache. Old cache generations are left in place. Set `BAZEL=bazel` if using a
+compatible Bazel binary instead of Bazelisk. Experiment targets use the existing
+scripts and their environment variables; for example, `make bench-routing
+RUNS=1 CAPRICORN_NETWORKS=lan TOKEN_COUNTS=16 OUTPUT=results/routing_lan`.
+
 Clone this repository or unpack its source release, then run commands from the repository root. Install [Bazelisk](https://bazel.build/install/bazelisk) and the system build tools above. Bazel resolves the C++ dependencies and patches declared in `MODULE.bazel`, including the patched SPU runtime. Build the five experiment targets:
 
 ```bash
