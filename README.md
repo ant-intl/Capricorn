@@ -274,6 +274,6 @@ The C++ implementation builds on SecretFlow SPU and YACL, EMP-toolkit, Microsoft
 
 ## License
 
-Core Capricorn source files carry [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) notices. Third-party components and model assets retain their respective licenses, including the licenses bundled under `plaintext/`. [LEGAL.md](LEGAL.md) contains the comment-language disclaimer; it is not a license grant.
+Core Capricorn source files carry [Apache License 2.0](LICENSE) notices. Third-party components and model assets retain their respective licenses, including the licenses bundled under `plaintext/`. [LEGAL.md](LEGAL.md) contains the comment-language disclaimer; it is not a license grant.
 
 Copyright 2026 Ant International, Ant Group. All rights reserved.
